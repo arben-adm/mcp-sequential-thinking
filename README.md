@@ -1,5 +1,6 @@
 # Enhanced Sequential Thinking MCP Server
 
+[![smithery badge](https://smithery.ai/badge/sequential-thinking)](https://smithery.ai/server/sequential-thinking)
 This project implements an advanced Sequential Thinking server using the Model Context Protocol (MCP). It provides a structured and flexible approach to problem-solving and decision-making through a series of thought steps, incorporating stages, scoring, and tagging.
 
 <a href="https://glama.ai/mcp/servers/m83dfy8feg"><img width="380" height="200" src="https://glama.ai/mcp/servers/m83dfy8feg/badge" alt="Sequential Thinking Server MCP server" /></a>
