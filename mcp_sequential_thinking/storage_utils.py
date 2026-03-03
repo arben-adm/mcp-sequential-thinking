@@ -23,8 +23,12 @@ def prepare_thoughts_for_serialization(thoughts: List[ThoughtData]) -> List[Dict
     return [thought.to_dict(include_id=True) for thought in thoughts]
 
 
-def save_thoughts_to_file(file_path: Path, thoughts: List[Dict[str, Any]], 
-                         lock_file: Path, metadata: Dict[str, Any] = None) -> None:
+def save_thoughts_to_file(
+    file_path: Path,
+    thoughts: List[Dict[str, Any]],
+    lock_file: Path,
+    metadata: Dict[str, Any] | None = None,
+) -> None:
     """Save thoughts to a file with proper locking.
 
     Args:
@@ -42,6 +46,10 @@ def save_thoughts_to_file(file_path: Path, thoughts: List[Dict[str, Any]],
     if metadata:
         data.update(metadata)
     
+    # Ensure destination directories exist before acquiring the lock.
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+
     # Use file locking to ensure thread safety when writing
     with portalocker.Lock(lock_file, timeout=10) as _:
         with open(file_path, 'w', encoding='utf-8') as f:
