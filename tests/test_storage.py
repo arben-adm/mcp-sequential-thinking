@@ -135,6 +135,24 @@ class TestThoughtStorage(unittest.TestCase):
             data = json.load(f)
             self.assertEqual(len(data["thoughts"]), 0)
     
+    def test_export_creates_parent_directory(self):
+        """Test exporting a session to a nested directory creates parents."""
+        thought = ThoughtData(
+            thought="Test thought",
+            thought_number=1,
+            total_thoughts=1,
+            next_thought_needed=False,
+            stage=ThoughtStage.CONCLUSION,
+        )
+        self.storage.add_thought(thought)
+
+        nested_dir = Path(self.temp_dir.name) / "exports" / "nested"
+        export_file = nested_dir / "export.json"
+
+        self.storage.export_session(str(export_file))
+
+        self.assertTrue(export_file.exists())
+
     def test_export_import_session(self):
         """Test exporting and importing a session."""
         thought1 = ThoughtData(
