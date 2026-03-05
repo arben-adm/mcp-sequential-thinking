@@ -46,7 +46,6 @@ mcp-sequential-thinking/
 │   ├── storage.py      # Thread-safe persistence layer
 │   ├── storage_utils.py # Shared utilities for storage operations
 │   ├── analysis.py     # Thought analysis and pattern detection
-│   ├── testing.py      # Test utilities and helper functions
 │   ├── utils.py        # Common utilities and helper functions
 │   ├── logging_conf.py # Centralized logging configuration
 │   └── __init__.py     # Package initialization
@@ -103,7 +102,31 @@ mcp-sequential-thinking/
 
 ## Claude Desktop Integration
 
-Add to your Claude Desktop configuration (`%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+Add to your Claude Desktop configuration:
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Option 1: Using the virtual environment (recommended for Linux/macOS)
+
+If you have set up the project with `uv venv && uv pip install -e .`, point directly to the venv Python interpreter. This avoids dependency resolution issues (e.g., on systems with Python 3.14+):
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "/path/to/mcp-sequential-thinking/.venv/bin/python",
+      "args": [
+        "-m",
+        "mcp_sequential_thinking.server"
+      ],
+      "cwd": "/path/to/mcp-sequential-thinking"
+    }
+  }
+}
+```
+
+### Option 2: Using uv run
 
 ```json
 {
@@ -111,17 +134,20 @@ Add to your Claude Desktop configuration (`%APPDATA%\Claude\claude_desktop_confi
     "sequential-thinking": {
       "command": "uv",
       "args": [
-        "--directory",
-        "C:\\path\\to\\your\\mcp-sequential-thinking\\run_server.py",
         "run",
-        "server.py"
-        ]
-      }
+        "--directory",
+        "/path/to/mcp-sequential-thinking",
+        "-m",
+        "mcp_sequential_thinking.server"
+      ]
     }
   }
+}
 ```
 
-Alternatively, if you've installed the package with `pip install -e .`, you can use:
+### Option 3: Using the installed entry point
+
+If you've installed the package globally with `pip install -e .`:
 
 ```json
 {
@@ -133,7 +159,7 @@ Alternatively, if you've installed the package with `pip install -e .`, you can 
 }
 ```
 
-You can also run it directly using uvx and skipping the installation step:
+### Option 4: Using uvx (no local install needed)
 
 ```json
 {
