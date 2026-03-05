@@ -688,15 +688,7 @@ def prepare_thoughts_for_serialization(thoughts: List[ThoughtData]) -> List[Dict
     Returns:
         List[Dict[str, Any]]: List of thought dictionaries with IDs
     """
-    thoughts_with_ids = []
-    for thought in thoughts:
-        # Set flag to include ID in dictionary
-        thought._include_id_in_dict = True
-        thoughts_with_ids.append(thought.to_dict())
-        # Reset flag
-        thought._include_id_in_dict = False
-    
-    return thoughts_with_ids
+    return [thought.to_dict(include_id=True) for thought in thoughts]
 
 
 def save_thoughts_to_file(file_path: Path, thoughts: List[Dict[str, Any]], 
