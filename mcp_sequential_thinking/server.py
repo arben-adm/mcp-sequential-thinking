@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Optional
+from typing import List, Optional  # Optional still needed for ctx: Optional[Context]
 
 from mcp.server.fastmcp import Context, FastMCP
 
@@ -34,9 +34,9 @@ def process_thought(
     total_thoughts: int,
     next_thought_needed: bool,
     stage: str,
-    tags: Optional[List[str]] = None,
-    axioms_used: Optional[List[str]] = None,
-    assumptions_challenged: Optional[List[str]] = None,
+    tags: List[str] = [],
+    axioms_used: List[str] = [],
+    assumptions_challenged: List[str] = [],
     ctx: Optional[Context] = None,
 ) -> dict:
     """Add a sequential thought with its metadata.
@@ -73,9 +73,9 @@ def process_thought(
             total_thoughts=total_thoughts,
             next_thought_needed=next_thought_needed,
             stage=thought_stage,
-            tags=tags or [],
-            axioms_used=axioms_used or [],
-            assumptions_challenged=assumptions_challenged or [],
+            tags=tags,
+            axioms_used=axioms_used,
+            assumptions_challenged=assumptions_challenged,
         )
 
         # Validate and store
