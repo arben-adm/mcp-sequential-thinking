@@ -178,13 +178,132 @@ If you've installed the package globally with `pip install -e .`:
 }
 ```
 
+## Editor & IDE Integration
+
+### Cursor
+
+Add to your Cursor MCP configuration at `.cursor/mcp.json` in your project root (or globally at `~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/path/to/mcp-sequential-thinking",
+        "-m",
+        "mcp_sequential_thinking.server"
+      ]
+    }
+  }
+}
+```
+
+### VS Code (Copilot MCP)
+
+VS Code supports MCP servers since version 1.99+. Add to `.vscode/mcp.json` in your workspace or to your user `settings.json`:
+
+```json
+{
+  "servers": {
+    "sequential-thinking": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/path/to/mcp-sequential-thinking",
+        "-m",
+        "mcp_sequential_thinking.server"
+      ]
+    }
+  }
+}
+```
+
+> **Note:** Enable MCP support in VS Code via `"chat.mcp.enabled": true` in your settings.
+
+### Zed
+
+Add to your Zed settings (`~/.config/zed/settings.json`):
+
+```json
+{
+  "context_servers": {
+    "sequential-thinking": {
+      "command": {
+        "path": "uv",
+        "args": [
+          "run",
+          "--directory",
+          "/path/to/mcp-sequential-thinking",
+          "-m",
+          "mcp_sequential_thinking.server"
+        ]
+      }
+    }
+  }
+}
+```
+
+### Claude Code (CLI)
+
+Add the server using the CLI:
+
+```bash
+claude mcp add sequential-thinking -- uv run --directory /path/to/mcp-sequential-thinking -m mcp_sequential_thinking.server
+```
+
+Or manually create/edit `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/path/to/mcp-sequential-thinking",
+        "-m",
+        "mcp_sequential_thinking.server"
+      ]
+    }
+  }
+}
+```
+
+### Windsurf
+
+Add to your Windsurf MCP configuration at `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/path/to/mcp-sequential-thinking",
+        "-m",
+        "mcp_sequential_thinking.server"
+      ]
+    }
+  }
+}
+```
+
+> **Tip:** All editor configurations above use `uv run`. You can also point directly to the venv Python interpreter (see [Claude Desktop Option 1](#option-1-using-the-virtual-environment-recommended-for-linuxmacos)) or use `uvx` (see [Option 4](#option-4-using-uvx-no-local-install-needed)) if you prefer not to clone the repository.
+
 # How It Works
 
 The server maintains a history of thoughts and processes them through a structured workflow. Each thought is validated using Pydantic models, categorized into thinking stages, and stored with relevant metadata in a thread-safe storage system. The server automatically handles data persistence, backup creation, and provides tools for analyzing relationships between thoughts.
 
 ## Usage Guide
 
-The Sequential Thinking server exposes three main tools:
+The Sequential Thinking server exposes five main tools:
 
 ### 1. `process_thought`
 
@@ -253,6 +372,28 @@ Generates a summary of your entire thinking process.
 ### 3. `clear_history`
 
 Resets the thinking process by clearing all recorded thoughts.
+
+### 4. `export_session`
+
+Exports the current thinking session to a JSON file for sharing or backup.
+
+**Parameters:**
+
+- `file_path` (string): Path to the output JSON file (parent directories are created automatically)
+
+**Example:**
+
+```python
+export_session(file_path="/home/user/exports/my-analysis.json")
+```
+
+### 5. `import_session`
+
+Imports a previously exported thinking session from a JSON file.
+
+**Parameters:**
+
+- `file_path` (string): Path to the JSON file to import
 
 ## Practical Applications
 
