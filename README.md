@@ -295,7 +295,30 @@ Add to your Windsurf MCP configuration at `~/.codeium/windsurf/mcp_config.json`:
 }
 ```
 
-> **Tip:** All editor configurations above use `uv run`. You can also point directly to the venv Python interpreter (see [Claude Desktop Option 1](#option-1-using-the-virtual-environment-recommended-for-linuxmacos)) or use `uvx` (see [Option 4](#option-4-using-uvx-no-local-install-needed)) if you prefer not to clone the repository.
+### Gemini CLI
+
+Add to your Gemini CLI settings at `~/.gemini/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/arben-adm/mcp-sequential-thinking",
+        "--with",
+        "portalocker",
+        "mcp-sequential-thinking"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+> **Tip:** All editor configurations above use `uv run` or `uvx`. You can also point directly to the venv Python interpreter (see [Claude Desktop Option 1](#option-1-using-the-virtual-environment-recommended-for-linuxmacos)) or use `uvx` (see [Option 4](#option-4-using-uvx-no-local-install-needed)) if you prefer not to clone the repository.
 
 # How It Works
 
