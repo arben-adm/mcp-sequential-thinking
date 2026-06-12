@@ -1,8 +1,8 @@
-from typing import List, Optional, Dict, Any
+from typing import List
 from enum import Enum
 from datetime import datetime
 from uuid import uuid4, UUID
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
 
 class ThoughtStage(Enum):
@@ -49,17 +49,18 @@ class ThoughtData(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     id: UUID = Field(default_factory=uuid4)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         """Make ThoughtData hashable based on its ID."""
         return hash(self.id)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """Compare ThoughtData objects based on their ID."""
         if not isinstance(other, ThoughtData):
             return False
         return self.id == other.id
 
     @field_validator('thought')
+    @classmethod
     def thought_not_empty(cls, v: str) -> str:
         """Validate that thought content is not empty."""
         if not v or not v.strip():
@@ -67,6 +68,7 @@ class ThoughtData(BaseModel):
         return v
 
     @field_validator('thought_number')
+    @classmethod
     def thought_number_positive(cls, v: int) -> int:
         """Validate that thought number is positive."""
         if v < 1:
@@ -74,71 +76,40 @@ class ThoughtData(BaseModel):
         return v
 
     @field_validator('total_thoughts')
-    def total_thoughts_valid(cls, v: int, values: Dict[str, Any]) -> int:
+    @classmethod
+    def total_thoughts_valid(cls, v: int, info: ValidationInfo) -> int:
         """Validate that total thoughts is valid."""
-        thought_number = values.data.get('thought_number')
+        thought_number = info.data.get('thought_number')
         if thought_number is not None and v < thought_number:
             raise ValueError("Total thoughts must be greater or equal to current thought number")
         return v
-
-    def validate(self) -> bool:
-        """Legacy validation method for backward compatibility.
-
-        Returns:
-            bool: True if the thought data is valid
-
-        Raises:
-            ValueError: If any validation checks fail
-        """
-        # Validation is now handled by Pydantic automatically
-        return True
 
     def to_dict(self, include_id: bool = False) -> dict:
         """Convert the thought data to a dictionary representation.
 
         Args:
             include_id: Whether to include the ID in the dictionary representation.
-                        Default is False to maintain compatibility with tests.
+                        Default is False to omit it from external representations.
 
         Returns:
-            dict: Dictionary representation of the thought data
+            dict: Dictionary representation of the thought data, with camelCase
+                keys for API consistency.
         """
-        from .utils import to_camel_case
+        result = {
+            "thought": self.thought,
+            "thoughtNumber": self.thought_number,
+            "totalThoughts": self.total_thoughts,
+            "nextThoughtNeeded": self.next_thought_needed,
+            "stage": self.stage.value,
+            "tags": self.tags,
+            "axiomsUsed": self.axioms_used,
+            "assumptionsChallenged": self.assumptions_challenged,
+            "timestamp": self.timestamp,
+        }
 
-        # Get all model fields, excluding internal properties
-        data = self.model_dump()
-        
-        # Handle special conversions
-        data["stage"] = self.stage.value
-        
-        if not include_id:
-            # Remove ID for external representations
-            data.pop("id", None)
-        else:
-            # Convert ID to string for JSON serialization
-            data["id"] = str(data["id"])
-        
-        # Convert snake_case keys to camelCase for API consistency
-        result = {}
-        for key, value in data.items():
-            if key == "stage":
-                # Stage is already handled above
-                continue
-                
-            camel_key = to_camel_case(key)
-            result[camel_key] = value
-        
-        # Ensure these fields are always present with camelCase naming
-        result["thought"] = self.thought
-        result["thoughtNumber"] = self.thought_number
-        result["totalThoughts"] = self.total_thoughts
-        result["nextThoughtNeeded"] = self.next_thought_needed
-        result["stage"] = self.stage.value
-        result["tags"] = self.tags
-        result["axiomsUsed"] = self.axioms_used
-        result["assumptionsChallenged"] = self.assumptions_challenged
-        result["timestamp"] = self.timestamp
-        
+        if include_id:
+            result["id"] = str(self.id)
+
         return result
 
     @classmethod
@@ -151,8 +122,6 @@ class ThoughtData(BaseModel):
         Returns:
             ThoughtData: A new ThoughtData instance
         """
-        from .utils import to_snake_case
-        
         # Convert any camelCase keys to snake_case
         snake_data = {}
         mappings = {
