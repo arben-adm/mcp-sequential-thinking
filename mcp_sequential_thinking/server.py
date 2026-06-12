@@ -28,15 +28,15 @@ storage = ThoughtStorage(storage_dir)
 
 
 @mcp.tool()
-def process_thought(
+async def process_thought(
     thought: str,
     thought_number: int,
     total_thoughts: int,
     next_thought_needed: bool,
     stage: str,
-    tags: List[str] = [],
-    axioms_used: List[str] = [],
-    assumptions_challenged: List[str] = [],
+    tags: Optional[List[str]] = None,
+    axioms_used: Optional[List[str]] = None,
+    assumptions_challenged: Optional[List[str]] = None,
     ctx: Optional[Context] = None,
 ) -> dict:
     """Add a sequential thought with its metadata.
@@ -55,13 +55,18 @@ def process_thought(
     Returns:
         dict: Analysis of the processed thought
     """
+    # Normalize optional list arguments (avoid mutable default arguments).
+    tags = tags or []
+    axioms_used = axioms_used or []
+    assumptions_challenged = assumptions_challenged or []
+
     try:
         # Log the request
         logger.info(f"Processing thought #{thought_number}/{total_thoughts} in stage '{stage}'")
 
         # Report progress if context is available
         if ctx:
-            ctx.report_progress(thought_number - 1, total_thoughts)
+            await ctx.report_progress(thought_number - 1, total_thoughts)
 
         # Convert stage string to enum
         thought_stage = ThoughtStage.from_string(stage)
@@ -78,8 +83,7 @@ def process_thought(
             assumptions_challenged=assumptions_challenged,
         )
 
-        # Validate and store
-        thought_data.validate()
+        # Store (validation already happened during ThoughtData construction)
         storage.add_thought(thought_data)
 
         # Get all thoughts for analysis
