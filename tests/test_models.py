@@ -25,7 +25,7 @@ class TestThoughtData(unittest.TestCase):
     """Test cases for the ThoughtData class."""
 
     def test_validate_valid(self):
-        """Test validation of valid thought data."""
+        """Test that valid thought data is accepted at construction time."""
         thought = ThoughtData(
             thought="Test thought",
             thought_number=1,
@@ -33,7 +33,11 @@ class TestThoughtData(unittest.TestCase):
             next_thought_needed=True,
             stage=ThoughtStage.PROBLEM_DEFINITION
         )
-        self.assertTrue(thought.validate())
+        # Validation is handled by Pydantic during construction; a successfully
+        # constructed instance is valid.
+        self.assertEqual(thought.thought, "Test thought")
+        self.assertEqual(thought.thought_number, 1)
+        self.assertEqual(thought.total_thoughts, 3)
 
     def test_validate_invalid_thought_number(self):
         """Test validation fails with invalid thought number."""
