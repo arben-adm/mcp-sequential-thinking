@@ -1040,11 +1040,12 @@ wheels = [
 
 [[package]]
 name = "sequential-thinking"
-version = "0.3.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "portalocker" },
+    { name = "pydantic" },
     { name = "pyyaml" },
     { name = "rich" },
 ]
@@ -1057,7 +1058,6 @@ all = [
     { name = "matplotlib" },
     { name = "mypy" },
     { name = "numpy" },
-    { name = "pydantic" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "uvicorn" },
@@ -1075,7 +1075,6 @@ vis = [
 ]
 web = [
     { name = "fastapi" },
-    { name = "pydantic" },
     { name = "uvicorn" },
 ]
 
@@ -1089,7 +1088,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "numpy", marker = "extra == 'vis'", specifier = ">=1.20.0" },
     { name = "portalocker" },
-    { name = "pydantic", marker = "extra == 'web'", specifier = ">=2.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },

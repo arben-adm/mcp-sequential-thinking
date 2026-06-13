@@ -33,8 +33,6 @@ A Model Context Protocol (MCP) server that facilitates structured, progressive t
 - **Pydantic**: For data validation and serialization
 - **Portalocker**: For thread-safe file access
 - **FastMCP**: For Model Context Protocol integration
-- **Rich**: For enhanced console output
-- **PyYAML**: For configuration management
 
 ## Project Structure
 
@@ -169,8 +167,6 @@ If you've installed the package globally with `pip install -e .`:
       "args": [
         "--from",
         "git+https://github.com/arben-adm/mcp-sequential-thinking",
-        "--with",
-        "portalocker",
         "mcp-sequential-thinking"
       ]
     }
@@ -308,8 +304,6 @@ Add to your Gemini CLI settings at `~/.gemini/settings.json`:
       "args": [
         "--from",
         "git+https://github.com/arben-adm/mcp-sequential-thinking",
-        "--with",
-        "portalocker",
         "mcp-sequential-thinking"
       ],
       "env": {}

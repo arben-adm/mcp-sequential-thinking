@@ -1,5 +1,4 @@
 from collections import Counter
-from datetime import datetime
 from typing import Any, Dict, List
 
 from .logging_conf import configure_logging

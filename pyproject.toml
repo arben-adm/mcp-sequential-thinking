@@ -12,8 +12,6 @@ authors = [
 dependencies = [
    "mcp[cli]>=1.2.0",
    "pydantic>=2.0.0",
-   "rich>=13.7.0",
-   "pyyaml>=6.0",
    "portalocker",
 ]
 
@@ -44,7 +42,7 @@ all = [
 ]
 
 [project.urls]
-Source = "https://github.com/arben-adm/sequential-thinking"
+Source = "https://github.com/arben-adm/mcp-sequential-thinking"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mcp_sequential_thinking"]
