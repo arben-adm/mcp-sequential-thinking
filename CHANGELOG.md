@@ -2,6 +2,12 @@
 
 ## [0.6.0] - Unreleased
 
+### Added
+- CI workflow (GitHub Actions): test matrix on Linux/Windows with Python 3.10
+  and 3.12, running pytest and mypy on every push and pull request.
+- Dependabot configuration for pip and GitHub Actions dependencies.
+- `SECURITY.md` with a private disclosure contact.
+
 ### Changed
 - **Package renamed** from `sequential-thinking` to `mcp-sequential-thinking` for the PyPI
   release (the old name is occupied by a third-party fork). The console script
