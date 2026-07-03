@@ -37,6 +37,10 @@ async def process_thought(
     tags: Optional[List[str]] = None,
     axioms_used: Optional[List[str]] = None,
     assumptions_challenged: Optional[List[str]] = None,
+    is_revision: bool = False,
+    revises_thought_number: Optional[int] = None,
+    branch_from_thought: Optional[int] = None,
+    branch_id: Optional[str] = None,
     ctx: Optional[Context] = None,
 ) -> dict:
     """Add a sequential thought with its metadata.
@@ -50,6 +54,10 @@ async def process_thought(
         tags: Optional keywords or categories for the thought
         axioms_used: Optional list of principles or axioms used in this thought
         assumptions_challenged: Optional list of assumptions challenged by this thought
+        is_revision: Whether this thought revises an earlier thought
+        revises_thought_number: The number of the earlier thought being revised (required if is_revision is true)
+        branch_from_thought: The thought number this thought branches from, to explore an alternative path
+        branch_id: Identifier for the branch (letters, digits, '-', '_'; max 64 chars; requires branch_from_thought)
         ctx: Optional MCP context object
 
     Returns:
@@ -81,6 +89,10 @@ async def process_thought(
             tags=tags,
             axioms_used=axioms_used,
             assumptions_challenged=assumptions_challenged,
+            is_revision=is_revision,
+            revises_thought_number=revises_thought_number,
+            branch_from_thought=branch_from_thought,
+            branch_id=branch_id,
         )
 
         # Store (validation already happened during ThoughtData construction)
@@ -176,7 +188,7 @@ def import_session(file_path: str) -> dict:
         return {"error": str(e), "status": "failed"}
 
 
-def main():
+def main() -> None:
     """Entry point for the MCP server."""
     logger.info("Starting Sequential Thinking MCP server")
 
@@ -198,10 +210,7 @@ def main():
 
 
 if __name__ == "__main__":
-    # When running the script directly, ensure we're in the right directory
-    import os
-    import sys
-
+    # When running the script directly, ensure we're in the right directory.
     # Add the parent directory to sys.path if needed
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if parent_dir not in sys.path:

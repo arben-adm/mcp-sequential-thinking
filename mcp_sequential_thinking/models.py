@@ -1,8 +1,14 @@
-from typing import List
+import re
+from typing import List, Optional
 from enum import Enum
 from datetime import datetime
 from uuid import uuid4, UUID
-from pydantic import BaseModel, Field, field_validator, ValidationInfo
+from pydantic import BaseModel, Field, field_validator, model_validator, ValidationInfo
+
+# branch_id ends up in files and tool output, so it is restricted to a short,
+# filesystem- and log-safe alphabet.
+BRANCH_ID_MAX_LENGTH = 64
+BRANCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class ThoughtStage(Enum):
@@ -46,6 +52,10 @@ class ThoughtData(BaseModel):
     tags: List[str] = Field(default_factory=list)
     axioms_used: List[str] = Field(default_factory=list)
     assumptions_challenged: List[str] = Field(default_factory=list)
+    is_revision: bool = False
+    revises_thought_number: Optional[int] = None
+    branch_from_thought: Optional[int] = None
+    branch_id: Optional[str] = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     id: UUID = Field(default_factory=uuid4)
 
@@ -84,6 +94,41 @@ class ThoughtData(BaseModel):
             raise ValueError("Total thoughts must be greater or equal to current thought number")
         return v
 
+    @model_validator(mode='after')
+    def validate_revision_and_branch(self) -> 'ThoughtData':
+        """Validate the cross-field rules for revisions and branches."""
+        if self.is_revision and self.revises_thought_number is None:
+            raise ValueError("is_revision=True requires revises_thought_number to be set")
+        if self.revises_thought_number is not None and not self.is_revision:
+            raise ValueError("revises_thought_number requires is_revision=True")
+        if self.is_revision and self.branch_from_thought is not None:
+            raise ValueError(
+                "A thought cannot be a revision and a branch start at the same time"
+            )
+        if self.branch_id is not None and self.branch_from_thought is None:
+            raise ValueError("branch_id requires branch_from_thought to be set")
+
+        for field_name, value in (
+            ("revises_thought_number", self.revises_thought_number),
+            ("branch_from_thought", self.branch_from_thought),
+        ):
+            if value is not None and not 1 <= value < self.thought_number:
+                raise ValueError(
+                    f"{field_name} must be >= 1 and < thought_number "
+                    f"({self.thought_number}), got {value}"
+                )
+
+        if self.branch_id is not None and (
+            len(self.branch_id) > BRANCH_ID_MAX_LENGTH
+            or not BRANCH_ID_PATTERN.match(self.branch_id)
+        ):
+            raise ValueError(
+                f"branch_id must be 1-{BRANCH_ID_MAX_LENGTH} characters from "
+                "[A-Za-z0-9_-]"
+            )
+
+        return self
+
     def to_dict(self, include_id: bool = False) -> dict:
         """Convert the thought data to a dictionary representation.
 
@@ -107,6 +152,17 @@ class ThoughtData(BaseModel):
             "timestamp": self.timestamp,
         }
 
+        # Revision/branch fields are only emitted when set, keeping records
+        # compact and older v2 files readable without them.
+        if self.is_revision:
+            result["isRevision"] = self.is_revision
+        if self.revises_thought_number is not None:
+            result["revisesThoughtNumber"] = self.revises_thought_number
+        if self.branch_from_thought is not None:
+            result["branchFromThought"] = self.branch_from_thought
+        if self.branch_id is not None:
+            result["branchId"] = self.branch_id
+
         if include_id:
             result["id"] = str(self.id)
 
@@ -129,7 +185,11 @@ class ThoughtData(BaseModel):
             "totalThoughts": "total_thoughts",
             "nextThoughtNeeded": "next_thought_needed",
             "axiomsUsed": "axioms_used",
-            "assumptionsChallenged": "assumptions_challenged"
+            "assumptionsChallenged": "assumptions_challenged",
+            "isRevision": "is_revision",
+            "revisesThoughtNumber": "revises_thought_number",
+            "branchFromThought": "branch_from_thought",
+            "branchId": "branch_id"
         }
         
         # Process known direct mappings

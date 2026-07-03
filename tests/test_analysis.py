@@ -95,6 +95,112 @@ class TestThoughtAnalyzer(unittest.TestCase):
         self.assertTrue("topTags" in summary["summary"])
         self.assertTrue("completionStatus" in summary["summary"])
 
+    def test_progress_ignores_revisions_and_branches(self):
+        """Revisions and branch thoughts don't advance progress metrics."""
+        revision = ThoughtData(
+            thought="Revising the problem definition",
+            thought_number=5,
+            total_thoughts=5,
+            next_thought_needed=True,
+            stage=ThoughtStage.PROBLEM_DEFINITION,
+            is_revision=True,
+            revises_thought_number=1,
+        )
+        branch = ThoughtData(
+            thought="Branching into an alternative",
+            thought_number=6,
+            total_thoughts=6,
+            next_thought_needed=True,
+            stage=ThoughtStage.ANALYSIS,
+            branch_from_thought=3,
+            branch_id="alt",
+        )
+        all_thoughts = self.all_thoughts + [revision, branch]
+
+        # Summary: 4 mainline thoughts of max_total 5 => 80%, not 120%.
+        summary = ThoughtAnalyzer.generate_summary(all_thoughts)
+        self.assertEqual(summary["summary"]["completionStatus"]["percentComplete"], 80.0)
+
+        # analyze_thought for the revision uses the mainline position (4/5),
+        # not its own number (5/5).
+        analysis = ThoughtAnalyzer.analyze_thought(revision, all_thoughts)
+        self.assertEqual(analysis["thoughtAnalysis"]["analysis"]["progress"], 80.0)
+
+    def test_summary_counts_branches_and_revisions(self):
+        """Summary reports a branches object and a revision count."""
+        revision = ThoughtData(
+            thought="Revision of thought 2",
+            thought_number=5,
+            total_thoughts=5,
+            next_thought_needed=True,
+            stage=ThoughtStage.RESEARCH,
+            is_revision=True,
+            revises_thought_number=2,
+        )
+        branch_a = ThoughtData(
+            thought="First thought on branch alt",
+            thought_number=6,
+            total_thoughts=6,
+            next_thought_needed=True,
+            stage=ThoughtStage.ANALYSIS,
+            branch_from_thought=3,
+            branch_id="alt",
+        )
+        branch_b = ThoughtData(
+            thought="Second thought on branch alt",
+            thought_number=7,
+            total_thoughts=7,
+            next_thought_needed=False,
+            stage=ThoughtStage.SYNTHESIS,
+            branch_from_thought=3,
+            branch_id="alt",
+        )
+        all_thoughts = self.all_thoughts + [revision, branch_a, branch_b]
+
+        summary = ThoughtAnalyzer.generate_summary(all_thoughts)["summary"]
+
+        self.assertEqual(summary["revisionCount"], 1)
+        self.assertEqual(summary["branches"], {"alt": {"fromThought": 3, "thoughtCount": 2}})
+
+        # Timeline entries flag revisions and branches.
+        by_number = {e["number"]: e for e in summary["timeline"]}
+        self.assertTrue(by_number[5]["isRevision"])
+        self.assertEqual(by_number[6]["branchId"], "alt")
+        self.assertNotIn("isRevision", by_number[1])
+        self.assertNotIn("branchId", by_number[1])
+
+    def test_analyze_revision_includes_revision_of(self):
+        """Analyzing a revision surfaces a snippet of the revised thought."""
+        revision = ThoughtData(
+            thought="Better framing of the problem",
+            thought_number=5,
+            total_thoughts=5,
+            next_thought_needed=True,
+            stage=ThoughtStage.PROBLEM_DEFINITION,
+            is_revision=True,
+            revises_thought_number=1,
+        )
+        all_thoughts = self.all_thoughts + [revision]
+
+        analysis = ThoughtAnalyzer.analyze_thought(revision, all_thoughts)
+        block = analysis["thoughtAnalysis"]["analysis"]
+
+        self.assertTrue(block["isRevision"])
+        self.assertEqual(block["revisedThought"], 1)
+        self.assertIsNone(block["branchId"])
+        self.assertEqual(block["revisionOf"]["thoughtNumber"], 1)
+        self.assertIn("First thought about climate change", block["revisionOf"]["snippet"])
+
+    def test_analyze_mainline_thought_reports_revision_fields(self):
+        """Mainline thoughts report the revision fields with null/false values."""
+        analysis = ThoughtAnalyzer.analyze_thought(self.thought1, self.all_thoughts)
+        block = analysis["thoughtAnalysis"]["analysis"]
+
+        self.assertFalse(block["isRevision"])
+        self.assertIsNone(block["revisedThought"])
+        self.assertIsNone(block["branchId"])
+        self.assertNotIn("revisionOf", block)
+
     def test_analyze_thought(self):
         """Test analyzing a thought."""
         analysis = ThoughtAnalyzer.analyze_thought(self.thought1, self.all_thoughts)

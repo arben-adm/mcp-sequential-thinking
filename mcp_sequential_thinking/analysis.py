@@ -11,6 +11,16 @@ class ThoughtAnalyzer:
     """Analyzer for thought data to extract insights and patterns."""
 
     @staticmethod
+    def _is_mainline(thought: ThoughtData) -> bool:
+        """Whether a thought belongs to the main line of reasoning.
+
+        Revisions and branch thoughts are excluded from progress metrics:
+        counting them would report e.g. 160% for a 5-thought session with
+        3 revisions.
+        """
+        return not thought.is_revision and thought.branch_id is None
+
+    @staticmethod
     def find_related_thoughts(
         current_thought: ThoughtData, all_thoughts: List[ThoughtData], max_results: int = 3
     ) -> List[ThoughtData]:
@@ -88,7 +98,7 @@ class ThoughtAnalyzer:
             return {"summary": "No thoughts recorded yet"}
 
         # Group thoughts by stage
-        stages = {}
+        stages: Dict[str, List[ThoughtData]] = {}
         for thought in thoughts:
             if thought.stage.value not in stages:
                 stages[thought.stage.value] = []
@@ -108,18 +118,21 @@ class ThoughtAnalyzer:
 
         # Create summary
         try:
+            # Progress is based on mainline thoughts only; revisions and
+            # branch thoughts don't advance the sequence.
+            mainline_thoughts = [t for t in thoughts if ThoughtAnalyzer._is_mainline(t)]
+
             # Safely calculate max total thoughts to avoid division by zero
-            max_total = 0
-            if thoughts:
-                max_total = max((t.total_thoughts for t in thoughts), default=0)
+            max_total = max((t.total_thoughts for t in mainline_thoughts), default=0)
 
             # Calculate percent complete safely
-            percent_complete = 0
+            percent_complete: float = 0.0
             if max_total > 0:
-                percent_complete = (len(thoughts) / max_total) * 100
+                percent_complete = (len(mainline_thoughts) / max_total) * 100
 
             logger.debug(
-                f"Calculating completion: {len(thoughts)}/{max_total} = {percent_complete}%"
+                f"Calculating completion: {len(mainline_thoughts)}/{max_total} "
+                f"= {percent_complete}%"
             )
 
             # Build the summary dictionary with more readable and
@@ -132,7 +145,26 @@ class ThoughtAnalyzer:
             sorted_thoughts = sorted(thoughts, key=lambda x: x.thought_number)
             timeline_entries = []
             for t in sorted_thoughts:
-                timeline_entries.append({"number": t.thought_number, "stage": t.stage.value})
+                entry: Dict[str, Any] = {"number": t.thought_number, "stage": t.stage.value}
+                if t.is_revision:
+                    entry["isRevision"] = True
+                if t.branch_id is not None:
+                    entry["branchId"] = t.branch_id
+                timeline_entries.append(entry)
+
+            # Aggregate branches: first occurrence defines the fork point.
+            branches: Dict[str, Dict[str, Any]] = {}
+            for t in sorted_thoughts:
+                if t.branch_id is None:
+                    continue
+                if t.branch_id not in branches:
+                    branches[t.branch_id] = {
+                        "fromThought": t.branch_from_thought,
+                        "thoughtCount": 0,
+                    }
+                branches[t.branch_id]["thoughtCount"] += 1
+
+            revision_count = sum(1 for t in thoughts if t.is_revision)
 
             # Create top tags entries
             top_tags_entries = []
@@ -147,6 +179,8 @@ class ThoughtAnalyzer:
                 "totalThoughts": len(thoughts),
                 "stages": stage_counts,
                 "timeline": timeline_entries,
+                "branches": branches,
+                "revisionCount": revision_count,
                 "topTags": top_tags_entries,
                 "completionStatus": {
                     "hasAllStages": all_stages_present,
@@ -179,10 +213,63 @@ class ThoughtAnalyzer:
             t.thought_number >= thought.thought_number for t in same_stage_thoughts
         )
 
-        # Calculate progress
-        progress = (thought.thought_number / thought.total_thoughts) * 100
+        # Calculate progress. Revisions and branch thoughts don't advance the
+        # sequence, so for them progress reflects the mainline position instead
+        # of their own number (which may exceed total_thoughts).
+        if ThoughtAnalyzer._is_mainline(thought):
+            effective_number = thought.thought_number
+        else:
+            effective_number = max(
+                (t.thought_number for t in all_thoughts if ThoughtAnalyzer._is_mainline(t)),
+                default=0,
+            )
+        progress = (effective_number / thought.total_thoughts) * 100
+
+        # For a revision, surface a snippet of the mainline thought it revises.
+        revision_of = None
+        if thought.is_revision and thought.revises_thought_number is not None:
+            revised = next(
+                (
+                    t
+                    for t in all_thoughts
+                    if ThoughtAnalyzer._is_mainline(t)
+                    and t.thought_number == thought.revises_thought_number
+                ),
+                None,
+            )
+            if revised is not None:
+                revision_of = {
+                    "thoughtNumber": revised.thought_number,
+                    "stage": revised.stage.value,
+                    "snippet": (
+                        revised.thought[:100] + "..."
+                        if len(revised.thought) > 100
+                        else revised.thought
+                    ),
+                }
 
         # Create analysis
+        analysis_block: Dict[str, Any] = {
+            "relatedThoughtsCount": len(related_thoughts),
+            "relatedThoughtSummaries": [
+                {
+                    "thoughtNumber": t.thought_number,
+                    "stage": t.stage.value,
+                    "snippet": (
+                        t.thought[:100] + "..." if len(t.thought) > 100 else t.thought
+                    ),
+                }
+                for t in related_thoughts
+            ],
+            "progress": progress,
+            "isFirstInStage": is_first_in_stage,
+            "isRevision": thought.is_revision,
+            "revisedThought": thought.revises_thought_number,
+            "branchId": thought.branch_id,
+        }
+        if revision_of is not None:
+            analysis_block["revisionOf"] = revision_of
+
         return {
             "thoughtAnalysis": {
                 "currentThought": {
@@ -193,21 +280,7 @@ class ThoughtAnalyzer:
                     "tags": thought.tags,
                     "timestamp": thought.timestamp,
                 },
-                "analysis": {
-                    "relatedThoughtsCount": len(related_thoughts),
-                    "relatedThoughtSummaries": [
-                        {
-                            "thoughtNumber": t.thought_number,
-                            "stage": t.stage.value,
-                            "snippet": (
-                                t.thought[:100] + "..." if len(t.thought) > 100 else t.thought
-                            ),
-                        }
-                        for t in related_thoughts
-                    ],
-                    "progress": progress,
-                    "isFirstInStage": is_first_in_stage,
-                },
+                "analysis": analysis_block,
                 "context": {
                     "thoughtHistoryLength": len(all_thoughts),
                     "currentStage": thought.stage.value,

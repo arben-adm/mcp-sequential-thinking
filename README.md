@@ -13,11 +13,12 @@ A Model Context Protocol (MCP) server that facilitates structured, progressive t
 ## Features
 
 - **Structured Thinking Framework**: Organizes thoughts through standard cognitive stages (Problem Definition, Research, Analysis, Synthesis, Conclusion)
+- **Revisions & Branching**: Revise earlier thoughts or fork alternative lines of reasoning, with revision- and branch-aware analysis and summaries
 - **Thought Tracking**: Records and manages sequential thoughts with metadata
 - **Related Thought Analysis**: Identifies connections between similar thoughts
 - **Progress Monitoring**: Tracks your position in the overall thinking sequence
 - **Summary Generation**: Creates concise overviews of the entire thought process
-- **Persistent Storage**: Automatically saves your thinking sessions with thread-safety
+- **Persistent Storage**: Append-only JSONL session log with thread-safety and automatic crash recovery
 - **Data Import/Export**: Share and reuse thinking sessions
 - **Extensible Architecture**: Easily customize and extend functionality
 - **Robust Error Handling**: Graceful handling of edge cases and corrupted data
@@ -158,6 +159,21 @@ If you've installed the package globally with `pip install -e .`:
 ```
 
 ### Option 4: Using uvx (no local install needed)
+
+As of v0.6.0 the package is published on PyPI as `mcp-sequential-thinking`, so uvx can fetch it directly:
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "uvx",
+      "args": ["mcp-sequential-thinking"]
+    }
+  }
+}
+```
+
+For unreleased versions, install straight from the repository instead:
 
 ```json
 {
@@ -318,6 +334,8 @@ Add to your Gemini CLI settings at `~/.gemini/settings.json`:
 
 The server maintains a history of thoughts and processes them through a structured workflow. Each thought is validated using Pydantic models, categorized into thinking stages, and stored with relevant metadata in a thread-safe storage system. The server automatically handles data persistence, backup creation, and provides tools for analyzing relationships between thoughts.
 
+Sessions are persisted as an append-only JSONL log at `~/.mcp_sequential_thinking/current_session.jsonl` (override the directory with the `MCP_STORAGE_DIR` environment variable). Each `process_thought` call appends a single fsynced line, so the file doubles as an audit trail and a truncated final line from an interrupted write is recovered automatically. Sessions from v0.5.x (`current_session.json`) are migrated losslessly on first start; the original file is kept as `current_session.json.migrated-to-v2`.
+
 ## Usage Guide
 
 The Sequential Thinking server exposes five main tools:
@@ -341,6 +359,10 @@ Records and analyzes a new thought in your sequential thinking process.
 - `tags` (list of strings, optional): Keywords or categories for your thought
 - `axioms_used` (list of strings, optional): Principles or axioms applied in your thought
 - `assumptions_challenged` (list of strings, optional): Assumptions your thought questions or challenges
+- `is_revision` (boolean, optional): Whether this thought revises an earlier one
+- `revises_thought_number` (integer, optional): The number of the earlier thought being revised (required together with `is_revision`)
+- `branch_from_thought` (integer, optional): The thought number to fork from when exploring an alternative path
+- `branch_id` (string, optional): Identifier for the branch (letters, digits, `-`, `_`; max 64 characters; requires `branch_from_thought`)
 
 **Example:**
 
@@ -355,6 +377,28 @@ process_thought(
     tags=["climate", "global policy", "systems thinking"],
     axioms_used=["Complex problems require multifaceted solutions"],
     assumptions_challenged=["Technology alone can solve climate change"]
+)
+
+# Revise an earlier thought
+process_thought(
+    thought="Framing the problem purely around emissions was too narrow; adaptation matters equally.",
+    thought_number=6,
+    total_thoughts=6,
+    next_thought_needed=True,
+    stage="Problem Definition",
+    is_revision=True,
+    revises_thought_number=1
+)
+
+# Fork an alternative line of reasoning
+process_thought(
+    thought="What if we approach this from a market-incentive angle instead?",
+    thought_number=7,
+    total_thoughts=7,
+    next_thought_needed=True,
+    stage="Analysis",
+    branch_from_thought=3,
+    branch_id="market-incentives"
 )
 ```
 
@@ -380,8 +424,14 @@ Generates a summary of your entire thinking process.
       {"number": 2, "stage": "Research"},
       {"number": 3, "stage": "Analysis"},
       {"number": 4, "stage": "Synthesis"},
-      {"number": 5, "stage": "Conclusion"}
-    ]
+      {"number": 5, "stage": "Conclusion"},
+      {"number": 6, "stage": "Problem Definition", "isRevision": true},
+      {"number": 7, "stage": "Analysis", "branchId": "market-incentives"}
+    ],
+    "branches": {
+      "market-incentives": {"fromThought": 3, "thoughtCount": 1}
+    },
+    "revisionCount": 1
   }
 }
 ```
@@ -396,21 +446,32 @@ Exports the current thinking session to a JSON file for sharing or backup.
 
 **Parameters:**
 
-- `file_path` (string): Path to the output JSON file (parent directories are created automatically)
+- `file_path` (string): Path to the output JSON file. Since v0.6.0, exports are confined to the `exports/` subdirectory of the storage directory; relative paths resolve to `~/.mcp_sequential_thinking/exports/` and parent directories are created automatically.
 
 **Example:**
 
 ```python
-export_session(file_path="/home/user/exports/my-analysis.json")
+export_session(file_path="my-analysis.json")
+# -> written to ~/.mcp_sequential_thinking/exports/my-analysis.json
 ```
 
 ### 5. `import_session`
 
-Imports a previously exported thinking session from a JSON file.
+Imports a previously exported thinking session from a JSON file. Exports created with v0.5.x remain importable.
 
 **Parameters:**
 
-- `file_path` (string): Path to the JSON file to import
+- `file_path` (string): Path to the JSON file to import. Like exports, resolved inside the `exports/` subdirectory of the storage directory.
+
+## Comparison to the official sequential-thinking server
+
+The [official MCP sequential-thinking server](https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking) provides the core paradigm: numbered thoughts with revisions and branching, held in memory for the duration of the process. This server implements the same paradigm and adds:
+
+- **Persistence**: sessions survive restarts (append-only JSONL log with crash recovery and automatic migration), and can be exported, shared and re-imported as JSON.
+- **Thinking stages**: thoughts are categorized into cognitive stages (Problem Definition, Research, Analysis, Synthesis, Conclusion), enabling stage-based filtering and completeness checks.
+- **Analysis**: related-thought detection via stages and tags, per-thought progress, and rich summaries including branch and revision statistics.
+
+If you only need ephemeral chain-of-thought scaffolding, the official server is a lighter choice; if you want durable, analyzable thinking sessions, this one is built for that.
 
 ## Practical Applications
 
