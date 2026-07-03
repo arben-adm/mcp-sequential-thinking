@@ -3,6 +3,15 @@
 ## [0.6.0] - Unreleased
 
 ### Added
+- **Append-only JSONL session format (schema v2)**: the session now lives in
+  `current_session.jsonl` (header record + one thought per line). `process_thought`
+  is O(1) per call instead of rewriting the full history, and the file doubles as
+  an audit trail. A truncated final line (interrupted write) is dropped on load
+  instead of invalidating the whole session. Existing v1 `current_session.json`
+  files are migrated automatically and losslessly on first start; the original is
+  kept as `current_session.json.migrated-to-v2`.
+- JSON exports now carry a top-level `"version": 2` field. Legacy v0.5.0 exports
+  (no version field) remain importable.
 - CI workflow (GitHub Actions): test matrix on Linux/Windows with Python 3.10
   and 3.12, running pytest and mypy on every push and pull request.
 - Dependabot configuration for pip and GitHub Actions dependencies.

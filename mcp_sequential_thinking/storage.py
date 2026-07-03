@@ -5,7 +5,14 @@ from datetime import datetime
 
 from .models import ThoughtData, ThoughtStage
 from .logging_conf import configure_logging
-from .storage_utils import prepare_thoughts_for_serialization, save_thoughts_to_file, load_thoughts_from_file
+from .storage_utils import (
+    append_thought_to_jsonl,
+    load_thoughts_from_file,
+    load_thoughts_from_jsonl,
+    prepare_thoughts_for_serialization,
+    rewrite_jsonl,
+    save_thoughts_to_file,
+)
 
 logger = configure_logging("sequential-thinking.storage")
 
@@ -29,8 +36,10 @@ class ThoughtStorage:
         # Create storage directory if it doesn't exist
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
-        # Default session file
-        self.current_session_file = self.storage_dir / "current_session.json"
+        # Default session file (schema v2, append-only JSONL). The legacy v1
+        # JSON file is only read once for migration.
+        self.current_session_file = self.storage_dir / "current_session.jsonl"
+        self.legacy_session_file = self.storage_dir / "current_session.json"
         self.lock_file = self.storage_dir / "current_session.lock"
 
         # Exports/imports are confined to a dedicated subdirectory so an export
@@ -83,37 +92,61 @@ class ThoughtStorage:
         return resolved
 
     def _load_session(self) -> None:
-        """Load thought history from the current session file if it exists."""
+        """Load thought history from the current session file if it exists.
+
+        If no v2 JSONL session exists but a legacy v1 JSON session does, the
+        v1 file is migrated to JSONL once (lossless, idempotent).
+        """
         with self._lock:
-            # Use the utility function to handle loading with proper error handling.
-            # backup_on_corruption=True: this is our own session file, so a corrupt
-            # or invalid file is backed up and we recover with an empty session
-            # rather than crashing the server on startup.
-            self.thought_history = load_thoughts_from_file(
+            if not self.current_session_file.exists() and self.legacy_session_file.exists():
+                self._migrate_v1_session()
+                return
+
+            # backup_on_corruption=True: this is our own session file, so a
+            # corrupt or invalid file is backed up (or a truncated final line
+            # dropped) and we recover rather than crashing the server on startup.
+            self.thought_history = load_thoughts_from_jsonl(
                 self.current_session_file, self.lock_file, backup_on_corruption=True
             )
 
-    def _save_session(self) -> None:
-        """Save the current thought history to the session file."""
-        # Use thread lock to ensure consistent data. Snapshot AND file write
-        # must both run under the lock so a stale snapshot can never be written
-        # after a newer one (RLock makes reentrancy harmless).
-        with self._lock:
-            # Use utility functions to prepare and save thoughts
-            thoughts_with_ids = prepare_thoughts_for_serialization(self.thought_history)
+    def _migrate_v1_session(self) -> None:
+        """Migrate a legacy v1 JSON session file to the v2 JSONL format.
 
-            # Save to file with proper locking
-            save_thoughts_to_file(self.current_session_file, thoughts_with_ids, self.lock_file)
+        The v1 file is loaded (with the usual corruption recovery), rewritten
+        as JSONL, and then renamed to ``current_session.json.migrated-to-v2``
+        so a second start only finds the JSONL file.
+        """
+        thoughts = load_thoughts_from_file(
+            self.legacy_session_file, self.lock_file, backup_on_corruption=True
+        )
+        rewrite_jsonl(
+            self.current_session_file,
+            self.lock_file,
+            prepare_thoughts_for_serialization(thoughts),
+        )
+        # On corruption the v1 file was already renamed to a .bak backup.
+        if self.legacy_session_file.exists():
+            migrated = self.legacy_session_file.with_name("current_session.json.migrated-to-v2")
+            self.legacy_session_file.rename(migrated)
+            logger.info(
+                f"Migrated v1 session ({len(thoughts)} thoughts) to "
+                f"{self.current_session_file}; original kept at {migrated}"
+            )
+        self.thought_history = thoughts
 
     def add_thought(self, thought: ThoughtData) -> None:
-        """Add a thought to the history and save the session.
+        """Add a thought to the history and append it to the session file.
 
         Args:
             thought: The thought data to add
         """
+        # Memory update AND file append run under the lock so disk order
+        # always matches memory order (RLock makes reentrancy harmless).
         with self._lock:
             self.thought_history.append(thought)
-        self._save_session()
+            append_thought_to_jsonl(
+                self.current_session_file, self.lock_file, thought.to_dict(include_id=True)
+            )
 
     def get_all_thoughts(self) -> List[ThoughtData]:
         """Get all thoughts in the current session.
@@ -138,10 +171,10 @@ class ThoughtStorage:
             return [t for t in self.thought_history if t.stage == stage]
 
     def clear_history(self) -> None:
-        """Clear the thought history and save the empty session."""
+        """Clear the thought history and rewrite the session file."""
         with self._lock:
             self.thought_history.clear()
-        self._save_session()
+            rewrite_jsonl(self.current_session_file, self.lock_file, [])
 
     def export_session(self, file_path: str) -> None:
         """Export the current session to a file.
@@ -213,5 +246,8 @@ class ThoughtStorage:
 
         with self._lock:
             self.thought_history = thoughts
-
-        self._save_session()
+            rewrite_jsonl(
+                self.current_session_file,
+                self.lock_file,
+                prepare_thoughts_for_serialization(thoughts),
+            )
