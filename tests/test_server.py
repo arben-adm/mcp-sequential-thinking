@@ -57,6 +57,53 @@ class TestProcessThought(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertIn("thoughtAnalysis", result)
 
+    def test_process_thought_revision_returns_revision_of(self):
+        """A revision thought reports revisionOf with a snippet of the
+        revised mainline thought."""
+        asyncio.run(
+            self.server.process_thought(
+                thought="Original take on the problem",
+                thought_number=1,
+                total_thoughts=3,
+                next_thought_needed=True,
+                stage="Problem Definition",
+            )
+        )
+
+        result = asyncio.run(
+            self.server.process_thought(
+                thought="Sharper framing of the problem",
+                thought_number=2,
+                total_thoughts=3,
+                next_thought_needed=True,
+                stage="Problem Definition",
+                is_revision=True,
+                revises_thought_number=1,
+            )
+        )
+
+        block = result["thoughtAnalysis"]["analysis"]
+        self.assertTrue(block["isRevision"])
+        self.assertEqual(block["revisedThought"], 1)
+        self.assertEqual(block["revisionOf"]["thoughtNumber"], 1)
+        self.assertIn("Original take", block["revisionOf"]["snippet"])
+
+    def test_process_thought_invalid_revision_params_fail_gracefully(self):
+        """Validation errors surface as {'status': 'failed'} instead of raising."""
+        result = asyncio.run(
+            self.server.process_thought(
+                thought="Bad revision",
+                thought_number=1,
+                total_thoughts=1,
+                next_thought_needed=False,
+                stage="Conclusion",
+                is_revision=True,  # missing revises_thought_number
+            )
+        )
+
+        self.assertEqual(result.get("status"), "failed")
+        self.assertIn("error", result)
+
 
 if __name__ == "__main__":
     unittest.main()

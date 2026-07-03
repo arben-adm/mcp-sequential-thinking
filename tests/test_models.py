@@ -108,6 +108,131 @@ class TestThoughtData(unittest.TestCase):
 
         self.assertEqual(thought.to_dict(), expected_dict)
 
+    def _base_kwargs(self, **overrides):
+        kwargs = {
+            "thought": "Test thought",
+            "thought_number": 3,
+            "total_thoughts": 5,
+            "next_thought_needed": True,
+            "stage": ThoughtStage.ANALYSIS,
+        }
+        kwargs.update(overrides)
+        return kwargs
+
+    def test_revision_valid(self):
+        """A revision with a valid earlier thought number is accepted."""
+        thought = ThoughtData(**self._base_kwargs(is_revision=True, revises_thought_number=1))
+        self.assertTrue(thought.is_revision)
+        self.assertEqual(thought.revises_thought_number, 1)
+
+    def test_revision_without_number_rejected(self):
+        """is_revision=True without revises_thought_number is rejected."""
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(is_revision=True))
+
+    def test_revises_number_without_flag_rejected(self):
+        """revises_thought_number without is_revision=True is rejected."""
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(revises_thought_number=1))
+
+    def test_revises_number_must_be_earlier(self):
+        """revises_thought_number must be >= 1 and < thought_number."""
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(is_revision=True, revises_thought_number=3))
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(is_revision=True, revises_thought_number=0))
+
+    def test_branch_valid(self):
+        """A branch with a valid fork point and id is accepted."""
+        thought = ThoughtData(
+            **self._base_kwargs(branch_from_thought=2, branch_id="alt-path_1")
+        )
+        self.assertEqual(thought.branch_from_thought, 2)
+        self.assertEqual(thought.branch_id, "alt-path_1")
+
+    def test_branch_from_must_be_earlier(self):
+        """branch_from_thought must be >= 1 and < thought_number."""
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(branch_from_thought=3, branch_id="alt"))
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(branch_from_thought=0, branch_id="alt"))
+
+    def test_branch_id_requires_branch_from(self):
+        """branch_id without branch_from_thought is rejected."""
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(branch_id="alt"))
+
+    def test_branch_id_invalid_characters_rejected(self):
+        """branch_id outside [A-Za-z0-9_-] or longer than 64 chars is rejected."""
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(branch_from_thought=1, branch_id="bad id!"))
+        with self.assertRaises(ValidationError):
+            ThoughtData(**self._base_kwargs(branch_from_thought=1, branch_id="x" * 65))
+
+    def test_revision_and_branch_mutually_exclusive(self):
+        """A thought cannot be a revision and a branch start at the same time."""
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            ThoughtData(
+                **self._base_kwargs(
+                    is_revision=True,
+                    revises_thought_number=1,
+                    branch_from_thought=2,
+                    branch_id="alt",
+                )
+            )
+
+    def test_to_dict_omits_default_revision_fields(self):
+        """Revision/branch fields are omitted from to_dict when at defaults."""
+        thought = ThoughtData(**self._base_kwargs())
+        d = thought.to_dict()
+        for key in ("isRevision", "revisesThoughtNumber", "branchFromThought", "branchId"):
+            self.assertNotIn(key, d)
+
+    def test_revision_branch_dict_roundtrip(self):
+        """to_dict/from_dict preserve revision and branch fields."""
+        revision = ThoughtData(**self._base_kwargs(is_revision=True, revises_thought_number=2))
+        d = revision.to_dict()
+        self.assertTrue(d["isRevision"])
+        self.assertEqual(d["revisesThoughtNumber"], 2)
+        restored = ThoughtData.from_dict(d)
+        self.assertTrue(restored.is_revision)
+        self.assertEqual(restored.revises_thought_number, 2)
+
+        branch = ThoughtData(**self._base_kwargs(branch_from_thought=1, branch_id="alt"))
+        restored_branch = ThoughtData.from_dict(branch.to_dict())
+        self.assertEqual(restored_branch.branch_from_thought, 1)
+        self.assertEqual(restored_branch.branch_id, "alt")
+
+    def test_from_dict_defaults_missing_revision_fields(self):
+        """Records without revision/branch fields (pre-revision v2 files) load
+        with defaults."""
+        data = {
+            "thought": "Old record",
+            "thoughtNumber": 1,
+            "totalThoughts": 1,
+            "nextThoughtNeeded": False,
+            "stage": "Conclusion",
+        }
+        thought = ThoughtData.from_dict(data)
+        self.assertFalse(thought.is_revision)
+        self.assertIsNone(thought.revises_thought_number)
+        self.assertIsNone(thought.branch_from_thought)
+        self.assertIsNone(thought.branch_id)
+
     def test_from_dict(self):
         """Test creation from dictionary."""
         data = {

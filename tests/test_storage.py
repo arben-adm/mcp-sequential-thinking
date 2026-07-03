@@ -542,6 +542,40 @@ class TestThoughtStorage(unittest.TestCase):
         self.assertEqual(storage.thought_history, [])
         self.assertEqual(len(list(Path(self.temp_dir.name).glob("current_session.bak.*"))), 1)
 
+    def test_jsonl_roundtrip_with_revision_and_branch_fields(self):
+        """Revision/branch fields survive the JSONL roundtrip."""
+        mainline = self._make_thought(1)
+        revision = ThoughtData(
+            thought="Revised first thought",
+            thought_number=2,
+            total_thoughts=3,
+            next_thought_needed=True,
+            stage=ThoughtStage.ANALYSIS,
+            is_revision=True,
+            revises_thought_number=1,
+        )
+        branch = ThoughtData(
+            thought="Alternative path",
+            thought_number=3,
+            total_thoughts=3,
+            next_thought_needed=False,
+            stage=ThoughtStage.SYNTHESIS,
+            branch_from_thought=1,
+            branch_id="alt-1",
+        )
+        for t in (mainline, revision, branch):
+            self.storage.add_thought(t)
+
+        reloaded = ThoughtStorage(self.temp_dir.name).get_all_thoughts()
+
+        self.assertEqual(len(reloaded), 3)
+        self.assertTrue(reloaded[1].is_revision)
+        self.assertEqual(reloaded[1].revises_thought_number, 1)
+        self.assertEqual(reloaded[2].branch_from_thought, 1)
+        self.assertEqual(reloaded[2].branch_id, "alt-1")
+        self.assertFalse(reloaded[0].is_revision)
+        self.assertIsNone(reloaded[0].branch_id)
+
     def test_import_v1_export_still_works(self):
         """A v0.5.0 JSON export (no 'version' field) is still importable."""
         export_dir = Path(self.temp_dir.name) / "exports"

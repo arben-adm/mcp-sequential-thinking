@@ -3,6 +3,14 @@
 ## [0.6.0] - Unreleased
 
 ### Added
+- **Thought revisions and branching**: `process_thought` accepts new optional
+  parameters `is_revision`, `revises_thought_number`, `branch_from_thought` and
+  `branch_id` to revise an earlier thought or fork an alternative line of
+  reasoning. Cross-field validation enforces consistent usage. Analysis output
+  reports `isRevision`/`revisedThought`/`branchId` (plus a `revisionOf` snippet
+  for revisions), and `generate_summary` gains a `branches` object and a
+  `revisionCount`. Progress metrics are based on mainline thoughts only, so
+  revisions and branches no longer inflate completion beyond 100%.
 - **Append-only JSONL session format (schema v2)**: the session now lives in
   `current_session.jsonl` (header record + one thought per line). `process_thought`
   is O(1) per call instead of rewriting the full history, and the file doubles as
