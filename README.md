@@ -64,6 +64,23 @@ mcp-sequential-thinking/
 
 ## Quick Start
 
+The package is published on PyPI as [`mcp-sequential-thinking`](https://pypi.org/project/mcp-sequential-thinking/). The easiest way to run it is via `uvx` — no install step needed:
+
+```bash
+uvx mcp-sequential-thinking
+```
+
+Or install it permanently:
+
+```bash
+pip install mcp-sequential-thinking
+mcp-sequential-thinking
+```
+
+### Development Setup
+
+To work on the code, clone the repository and set it up from source:
+
 1. **Set Up Project**
    ```bash
    # Create and activate virtual environment
@@ -106,7 +123,53 @@ Add to your Claude Desktop configuration:
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
-### Option 1: Using the virtual environment (recommended for Linux/macOS)
+### Option 1: Using uvx with the PyPI package (recommended)
+
+No clone, no venv, no manual updates — uvx fetches the package from PyPI and runs it:
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "uvx",
+      "args": ["mcp-sequential-thinking"]
+    }
+  }
+}
+```
+
+To test unreleased changes, point uvx at the repository instead:
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/arben-adm/mcp-sequential-thinking",
+        "mcp-sequential-thinking"
+      ]
+    }
+  }
+}
+```
+
+### Option 2: Using the installed entry point
+
+If you've installed the package with `pip install mcp-sequential-thinking` (or `pip install -e .` from a clone):
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "mcp-sequential-thinking"
+    }
+  }
+}
+```
+
+### Option 3: Using a local clone's virtual environment (development)
 
 If you have set up the project with `uv venv && uv pip install -e .`, point directly to the venv Python interpreter. This avoids dependency resolution issues (e.g., on systems with Python 3.14+):
 
@@ -125,7 +188,7 @@ If you have set up the project with `uv venv && uv pip install -e .`, point dire
 }
 ```
 
-### Option 2: Using uv run
+### Option 4: Using uv run on a local clone (development)
 
 ```json
 {
@@ -138,52 +201,6 @@ If you have set up the project with `uv venv && uv pip install -e .`, point dire
         "/path/to/mcp-sequential-thinking",
         "-m",
         "mcp_sequential_thinking.server"
-      ]
-    }
-  }
-}
-```
-
-### Option 3: Using the installed entry point
-
-If you've installed the package globally with `pip install -e .`:
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "mcp-sequential-thinking"
-    }
-  }
-}
-```
-
-### Option 4: Using uvx (no local install needed)
-
-As of v0.6.0 the package is published on PyPI as `mcp-sequential-thinking`, so uvx can fetch it directly:
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "uvx",
-      "args": ["mcp-sequential-thinking"]
-    }
-  }
-}
-```
-
-For unreleased versions, install straight from the repository instead:
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/arben-adm/mcp-sequential-thinking",
-        "mcp-sequential-thinking"
       ]
     }
   }
@@ -200,14 +217,8 @@ Add to your Cursor MCP configuration at `.cursor/mcp.json` in your project root 
 {
   "mcpServers": {
     "sequential-thinking": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/path/to/mcp-sequential-thinking",
-        "-m",
-        "mcp_sequential_thinking.server"
-      ]
+      "command": "uvx",
+      "args": ["mcp-sequential-thinking"]
     }
   }
 }
@@ -221,14 +232,8 @@ VS Code supports MCP servers since version 1.99+. Add to `.vscode/mcp.json` in y
 {
   "servers": {
     "sequential-thinking": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/path/to/mcp-sequential-thinking",
-        "-m",
-        "mcp_sequential_thinking.server"
-      ]
+      "command": "uvx",
+      "args": ["mcp-sequential-thinking"]
     }
   }
 }
@@ -245,14 +250,8 @@ Add to your Zed settings (`~/.config/zed/settings.json`):
   "context_servers": {
     "sequential-thinking": {
       "command": {
-        "path": "uv",
-        "args": [
-          "run",
-          "--directory",
-          "/path/to/mcp-sequential-thinking",
-          "-m",
-          "mcp_sequential_thinking.server"
-        ]
+        "path": "uvx",
+        "args": ["mcp-sequential-thinking"]
       }
     }
   }
@@ -264,7 +263,7 @@ Add to your Zed settings (`~/.config/zed/settings.json`):
 Add the server using the CLI:
 
 ```bash
-claude mcp add sequential-thinking -- uv run --directory /path/to/mcp-sequential-thinking -m mcp_sequential_thinking.server
+claude mcp add sequential-thinking -- uvx mcp-sequential-thinking
 ```
 
 Or manually create/edit `.mcp.json` in your project root:
@@ -273,14 +272,8 @@ Or manually create/edit `.mcp.json` in your project root:
 {
   "mcpServers": {
     "sequential-thinking": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/path/to/mcp-sequential-thinking",
-        "-m",
-        "mcp_sequential_thinking.server"
-      ]
+      "command": "uvx",
+      "args": ["mcp-sequential-thinking"]
     }
   }
 }
@@ -294,14 +287,8 @@ Add to your Windsurf MCP configuration at `~/.codeium/windsurf/mcp_config.json`:
 {
   "mcpServers": {
     "sequential-thinking": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/path/to/mcp-sequential-thinking",
-        "-m",
-        "mcp_sequential_thinking.server"
-      ]
+      "command": "uvx",
+      "args": ["mcp-sequential-thinking"]
     }
   }
 }
@@ -317,18 +304,14 @@ Add to your Gemini CLI settings at `~/.gemini/settings.json`:
     "sequential-thinking": {
       "type": "stdio",
       "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/arben-adm/mcp-sequential-thinking",
-        "mcp-sequential-thinking"
-      ],
+      "args": ["mcp-sequential-thinking"],
       "env": {}
     }
   }
 }
 ```
 
-> **Tip:** All editor configurations above use `uv run` or `uvx`. You can also point directly to the venv Python interpreter (see [Claude Desktop Option 1](#option-1-using-the-virtual-environment-recommended-for-linuxmacos)) or use `uvx` (see [Option 4](#option-4-using-uvx-no-local-install-needed)) if you prefer not to clone the repository.
+> **Tip:** All editor configurations above run the published PyPI package via `uvx`. To run from a local clone instead (e.g. for development), use `uv run --directory /path/to/mcp-sequential-thinking -m mcp_sequential_thinking.server` or point directly to the venv Python interpreter (see [Claude Desktop Options 3 and 4](#option-3-using-a-local-clones-virtual-environment-development)).
 
 # How It Works
 
