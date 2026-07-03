@@ -147,11 +147,10 @@ class TestThoughtStorage(unittest.TestCase):
         )
         self.storage.add_thought(thought)
 
-        nested_dir = Path(self.temp_dir.name) / "exports" / "nested"
-        export_file = nested_dir / "export.json"
+        # Relative paths resolve inside the exports/ subdirectory.
+        self.storage.export_session("nested/export.json")
 
-        self.storage.export_session(str(export_file))
-
+        export_file = Path(self.temp_dir.name) / "exports" / "nested" / "export.json"
         self.assertTrue(export_file.exists())
 
     def test_export_import_session(self):
@@ -175,9 +174,10 @@ class TestThoughtStorage(unittest.TestCase):
         self.storage.add_thought(thought1)
         self.storage.add_thought(thought2)
         
-        # Export the session
-        export_file = os.path.join(self.temp_dir.name, "export.json")
+        # Export the session (relative path lands in the exports/ subdirectory)
+        export_file = "export.json"
         self.storage.export_session(export_file)
+        self.assertTrue((Path(self.temp_dir.name) / "exports" / "export.json").exists())
         
         # Clear the history
         self.storage.clear_history()
@@ -247,8 +247,10 @@ class TestThoughtStorage(unittest.TestCase):
         self.storage.add_thought(thought)
         self.assertEqual(len(self.storage.thought_history), 1)
 
-        # A plain text file inside the storage dir (passes containment, fails parse).
-        notes = Path(self.temp_dir.name) / "notes.txt"
+        # A plain text file inside the export dir (passes containment, fails parse).
+        export_dir = Path(self.temp_dir.name) / "exports"
+        export_dir.mkdir()
+        notes = export_dir / "notes.txt"
         notes.write_text("just some notes, not json", encoding="utf-8")
 
         with self.assertRaises(ValueError):
@@ -257,7 +259,7 @@ class TestThoughtStorage(unittest.TestCase):
         # Input file unchanged, not renamed.
         self.assertTrue(notes.exists())
         self.assertEqual(notes.read_text(encoding="utf-8"), "just some notes, not json")
-        self.assertEqual(list(Path(self.temp_dir.name).glob("notes.bak.*")), [])
+        self.assertEqual(list(export_dir.glob("notes.bak.*")), [])
 
         # Current session unchanged in memory and on disk.
         self.assertEqual(len(self.storage.thought_history), 1)
@@ -329,6 +331,67 @@ class TestThoughtStorage(unittest.TestCase):
             traversal = os.path.join(self.temp_dir.name, "..", "escape.json")
             with self.assertRaises(ValueError):
                 self.storage.import_session(traversal)
+
+    def test_export_cannot_overwrite_session_file(self):
+        """An export path traversing out of exports/ onto the session file is
+        rejected and the session file is left untouched."""
+        thought = ThoughtData(
+            thought="Test thought",
+            thought_number=1,
+            total_thoughts=1,
+            next_thought_needed=False,
+            stage=ThoughtStage.CONCLUSION,
+        )
+        self.storage.add_thought(thought)
+
+        session_file = Path(self.temp_dir.name) / "current_session.json"
+        before = session_file.read_text(encoding="utf-8")
+
+        with self.assertRaises(ValueError):
+            self.storage.export_session("../current_session.json")
+
+        self.assertEqual(session_file.read_text(encoding="utf-8"), before)
+
+    def test_import_rejects_file_without_thoughts_key(self):
+        """Importing valid JSON without a 'thoughts' key raises and leaves the
+        current session and the source file untouched."""
+        thought = ThoughtData(
+            thought="Existing thought",
+            thought_number=1,
+            total_thoughts=1,
+            next_thought_needed=False,
+            stage=ThoughtStage.PROBLEM_DEFINITION,
+        )
+        self.storage.add_thought(thought)
+
+        export_dir = Path(self.temp_dir.name) / "exports"
+        export_dir.mkdir()
+        wrong_file = export_dir / "wrong.json"
+        wrong_file.write_text(json.dumps({"foo": 1}), encoding="utf-8")
+
+        with self.assertRaises((KeyError, ValueError)):
+            self.storage.import_session(str(wrong_file))
+
+        # Session unchanged, source file unchanged.
+        self.assertEqual(len(self.storage.thought_history), 1)
+        self.assertEqual(wrong_file.read_text(encoding="utf-8"), json.dumps({"foo": 1}))
+
+    def test_import_missing_file_raises_and_preserves_state(self):
+        """Importing a nonexistent file raises instead of silently wiping the
+        current session."""
+        thought = ThoughtData(
+            thought="Existing thought",
+            thought_number=1,
+            total_thoughts=1,
+            next_thought_needed=False,
+            stage=ThoughtStage.PROBLEM_DEFINITION,
+        )
+        self.storage.add_thought(thought)
+
+        with self.assertRaises(FileNotFoundError):
+            self.storage.import_session("does-not-exist.json")
+
+        self.assertEqual(len(self.storage.thought_history), 1)
 
     # ------------------------------------------------------------------
     # T7: atomic write leaves no temp file behind

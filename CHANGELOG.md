@@ -6,8 +6,18 @@
 - **Package renamed** from `sequential-thinking` to `mcp-sequential-thinking` for the PyPI
   release (the old name is occupied by a third-party fork). The console script
   `mcp-sequential-thinking` and the import package `mcp_sequential_thinking` are unchanged.
+- **Breaking:** `export_session` and `import_session` are now confined to the
+  `exports/` subdirectory of the storage directory (relative paths resolve to
+  `~/.mcp_sequential_thinking/exports/` by default). This prevents an export from
+  overwriting the active session file or its lock file.
 
 ### Fixed
+- `import_session` no longer silently replaces the active session with an empty
+  one when the given file is a valid JSON file without a `thoughts` key, or when
+  the file does not exist. Both cases now raise and leave the session untouched.
+- Path-validation errors returned to the MCP client no longer leak the absolute
+  storage path (e.g. the user's home directory); the full path is only logged
+  server-side.
 - `mypy` now passes cleanly: added missing type annotations in `analysis.py`
   (`stages`, `percent_complete`) and `server.py` (`main() -> None`), and removed
   duplicate `import os` / `import sys` in the `__main__` block of `server.py`.

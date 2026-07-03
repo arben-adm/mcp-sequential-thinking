@@ -106,11 +106,16 @@ def load_thoughts_from_file(
         with portalocker.Lock(lock_file, timeout=10) as _, open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
+        # A valid session/export file must carry a "thoughts" key. Without this
+        # check, importing an arbitrary JSON file would silently load an empty
+        # list and wipe the current session.
+        if "thoughts" not in data:
+            raise KeyError(
+                f"File {file_path} does not contain a 'thoughts' key and is not a valid session file."
+            )
+
         # Convert data to ThoughtData objects after file is closed
-        thoughts = [
-            ThoughtData.from_dict(thought_dict)
-            for thought_dict in data.get("thoughts", [])
-        ]
+        thoughts = [ThoughtData.from_dict(thought_dict) for thought_dict in data["thoughts"]]
 
         logger.debug(f"Loaded {len(thoughts)} thoughts from {file_path}")
         return thoughts

@@ -33,6 +33,11 @@ class ThoughtStorage:
         self.current_session_file = self.storage_dir / "current_session.json"
         self.lock_file = self.storage_dir / "current_session.lock"
 
+        # Exports/imports are confined to a dedicated subdirectory so an export
+        # can never clobber the session file (or its lock file). Created lazily
+        # by export_session.
+        self.export_dir = self.storage_dir / "exports"
+
         # Thread safety
         self._lock = threading.RLock()
         self.thought_history: List[ThoughtData] = []
@@ -68,9 +73,12 @@ class ThoughtStorage:
         try:
             resolved.relative_to(base_r)
         except ValueError:
+            # Log the full resolved base server-side, but keep it out of the
+            # client-facing message (it would leak the user's home directory).
+            logger.error(f"Rejected path '{candidate}': resolves outside '{base_r}'")
             raise ValueError(
-                f"Path '{candidate}' is outside the allowed storage directory "
-                f"'{base_r}'. Export/import are confined to the storage directory."
+                f"Path '{candidate}' resolves outside the allowed export directory. "
+                "Export/import paths must stay within the storage area."
             )
         return resolved
 
@@ -139,14 +147,17 @@ class ThoughtStorage:
         """Export the current session to a file.
 
         Args:
-            file_path: Path to save the exported session. Must resolve to a
-                location inside the storage directory.
+            file_path: Path to save the exported session. Relative paths are
+                resolved against the ``exports/`` subdirectory of the storage
+                directory; the result must stay inside it.
 
         Raises:
-            ValueError: If file_path resolves outside the storage directory.
+            ValueError: If file_path resolves outside the export directory.
         """
-        # Confine the caller-controlled path to storage_dir before any file I/O.
-        file_path_obj = self._ensure_within(self.storage_dir, file_path)
+        # Confine the caller-controlled path to export_dir before any file I/O,
+        # so an export can never overwrite the session or lock file.
+        file_path_obj = self._ensure_within(self.export_dir, file_path)
+        self.export_dir.mkdir(parents=True, exist_ok=True)
 
         with self._lock:
             # Use utility function to prepare thoughts for serialization
@@ -173,19 +184,27 @@ class ThoughtStorage:
         """Import a session from a file.
 
         Args:
-            file_path: Path to the file to import
+            file_path: Path to the file to import. Relative paths are resolved
+                against the ``exports/`` subdirectory of the storage directory;
+                the result must stay inside it.
 
         Raises:
-            ValueError: If file_path resolves outside the storage directory,
+            ValueError: If file_path resolves outside the export directory,
                 if the file is not valid JSON, or if it contains semantically
                 invalid thought data. In all error cases the input file and the
                 current session are left untouched.
             FileNotFoundError: If the file doesn't exist.
-            KeyError: If the file doesn't contain valid thought data.
+            KeyError: If the file doesn't contain a 'thoughts' key.
         """
-        # Confine the caller-controlled path to storage_dir before any file I/O.
-        file_path_obj = self._ensure_within(self.storage_dir, file_path)
+        # Confine the caller-controlled path to export_dir before any file I/O.
+        file_path_obj = self._ensure_within(self.export_dir, file_path)
         lock_file = file_path_obj.with_suffix('.lock')
+
+        # load_thoughts_from_file returns [] for missing files (recovery
+        # behaviour for the server's own session file). For an import that
+        # would silently wipe the current session, so reject explicitly.
+        if not file_path_obj.exists():
+            raise FileNotFoundError(f"Import file not found: {file_path}")
 
         # Use utility function to load thoughts. backup_on_corruption defaults to
         # False, so a malformed/invalid input file raises instead of renaming the
