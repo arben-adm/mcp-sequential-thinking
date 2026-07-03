@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.6.0] - Unreleased
+## [0.6.0] - 2026-07-03
 
 ### Added
 - **Thought revisions and branching**: `process_thought` accepts new optional
