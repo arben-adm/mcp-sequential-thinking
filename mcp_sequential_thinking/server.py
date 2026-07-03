@@ -176,7 +176,7 @@ def import_session(file_path: str) -> dict:
         return {"error": str(e), "status": "failed"}
 
 
-def main():
+def main() -> None:
     """Entry point for the MCP server."""
     logger.info("Starting Sequential Thinking MCP server")
 
@@ -198,10 +198,7 @@ def main():
 
 
 if __name__ == "__main__":
-    # When running the script directly, ensure we're in the right directory
-    import os
-    import sys
-
+    # When running the script directly, ensure we're in the right directory.
     # Add the parent directory to sys.path if needed
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if parent_dir not in sys.path:

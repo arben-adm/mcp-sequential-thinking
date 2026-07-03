@@ -88,7 +88,7 @@ class ThoughtAnalyzer:
             return {"summary": "No thoughts recorded yet"}
 
         # Group thoughts by stage
-        stages = {}
+        stages: Dict[str, List[ThoughtData]] = {}
         for thought in thoughts:
             if thought.stage.value not in stages:
                 stages[thought.stage.value] = []
@@ -114,7 +114,7 @@ class ThoughtAnalyzer:
                 max_total = max((t.total_thoughts for t in thoughts), default=0)
 
             # Calculate percent complete safely
-            percent_complete = 0
+            percent_complete: float = 0.0
             if max_total > 0:
                 percent_complete = (len(thoughts) / max_total) * 100
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0] - Unreleased
+
+### Changed
+- **Package renamed** from `sequential-thinking` to `mcp-sequential-thinking` for the PyPI
+  release (the old name is occupied by a third-party fork). The console script
+  `mcp-sequential-thinking` and the import package `mcp_sequential_thinking` are unchanged.
+
+### Fixed
+- `mypy` now passes cleanly: added missing type annotations in `analysis.py`
+  (`stages`, `percent_complete`) and `server.py` (`main() -> None`), and removed
+  duplicate `import os` / `import sys` in the `__main__` block of `server.py`.
+
 ## Version 0.5.0 (Unreleased)
 
 ### Code Quality Improvements

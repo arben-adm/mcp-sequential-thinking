@@ -159,6 +159,21 @@ If you've installed the package globally with `pip install -e .`:
 
 ### Option 4: Using uvx (no local install needed)
 
+As of v0.6.0 the package is published on PyPI as `mcp-sequential-thinking`, so uvx can fetch it directly:
+
+```json
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "uvx",
+      "args": ["mcp-sequential-thinking"]
+    }
+  }
+}
+```
+
+For unreleased versions, install straight from the repository instead:
+
 ```json
 {
   "mcpServers": {
