@@ -22,6 +22,8 @@
   (no version field) remain importable.
 - CI workflow (GitHub Actions): test matrix on Linux/Windows with Python 3.10
   and 3.12, running pytest and mypy on every push and pull request.
+- Release workflow publishing to PyPI via Trusted Publishing when a GitHub
+  release is published (requires one-time Trusted Publisher setup on pypi.org).
 - Dependabot configuration for pip and GitHub Actions dependencies.
 - `SECURITY.md` with a private disclosure contact.
 
