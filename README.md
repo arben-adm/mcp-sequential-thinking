@@ -1,4 +1,5 @@
 [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/arben-adm-mcp-sequential-thinking-badge.png)](https://mseep.ai/app/arben-adm-mcp-sequential-thinking)
+[![Verified on MseeP](https://mseep.ai/badge.svg)](https://mseep.ai/app/0387db2d-476b-4b3d-852a-d55b4f67d888)
 
 # Sequential Thinking MCP Server
 
