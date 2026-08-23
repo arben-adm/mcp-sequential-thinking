@@ -1,6 +1,6 @@
 [project]
 name = "mcp-sequential-thinking"
-version = "0.6.0"
+version = "0.6.1"
 description = "A Sequential Thinking MCP Server for advanced problem solving"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -10,7 +10,7 @@ authors = [
    { name = "Arben Ademi", email = "arben.ademi@tuta.io" }
 ]
 dependencies = [
-   "mcp[cli]>=1.2.0",
+   "mcp>=1.2.0,<2.0.0",
    "pydantic>=2.0.0",
    "portalocker",
 ]
