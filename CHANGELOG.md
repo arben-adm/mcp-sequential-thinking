@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.1] - 2026-08-23
+
+### Fixed
+- `uvx mcp-sequential-thinking` failed with `ModuleNotFoundError: No module
+  named 'mcp.server.fastmcp'` because the `mcp` dependency had no upper bound
+  and `uvx` (unlike a `uv.lock`-pinned install) re-resolves against the
+  published index, pulling in `mcp` 2.0.0, which removed `mcp.server.fastmcp`.
+  The dependency is now pinned to `mcp>=1.2.0,<2.0.0`. The `[cli]` extra was
+  also dropped since nothing in this project uses `mcp.cli`, `mcp dev`, or
+  `mcp install`; it only pulled in unused packages (`typer`, `rich`, etc.).
+  (#27)
+
 ## [0.6.0] - 2026-07-03
 
 ### Added
