@@ -19,3 +19,15 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest tests/ -v
       - run: mypy mcp_sequential_thinking/
+
+  resolve-smoke-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - run: >
+          uv run --no-sync --isolated --with . --python ${{ matrix.python-version }}
+          python -c "import mcp_sequential_thinking.server"
