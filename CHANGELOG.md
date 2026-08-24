@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.7.0] - 2026-08-24
+
+### Breaking
+
+- **`mcp` dependency moves to the 2.x line**: `mcp>=2,<3` (was
+  `>=1.2.0,<2.0.0`). `mcp.server.fastmcp.FastMCP` is gone upstream; the
+  server is rewritten against `mcp.server.mcpserver.MCPServer`. If you
+  vendor or subclass anything from this package's server module, the SDK
+  types you get back changed from camelCase to snake_case (`isError` →
+  `is_error`, `structuredContent` → `structured_content`, etc.) — this
+  package's own request/response shapes below are affected the same way.
+- **Every tool now returns structured, typed output** (a Pydantic model,
+  surfaced as `structured_content`) instead of an untyped dict serialized
+  to JSON text. Field names are snake_case throughout, replacing the old
+  camelCase dict shape end to end — not just the fields called out below.
+  `tools/list` now advertises an `output_schema` for all five tools.
+- **`process_thought` analysis output**: the old single `progress` float
+  (which froze/misreported once revisions or branches entered the
+  picture) is replaced by four explicit fields: `main_line_progress`,
+  `main_line_position`, `total_thoughts_recorded`, `branch_count`,
+  `revision_count`. `relatedThoughtsCount`/`relatedThoughtSummaries` —
+  which matched on stage equality or tag overlap and called that
+  "related" — are replaced by `related_thoughts` (lexical similarity
+  across the actual thought text, stage-independent) and
+  `same_category_thoughts` (the honest name for the old categorical
+  match, now requiring an actual shared tag rather than stage alone).
+  Every response also carries a `warnings` list (stage-order issues; see
+  below).
+- **`thought_number` is now optional** on `process_thought` — omit it to
+  have the server assign the next free number on the current line
+  (mainline, or the given `branch_id`). Sending a `thought_number` that's
+  already used on that line is now rejected (previously accepted
+  silently, corrupting progress accounting).
+- **`generate_summary` output restructured**: a new `content` section
+  (per-stage thought excerpts, aggregated `assumptions_challenged`,
+  `open_branches`, `revision_chains`) sits alongside the old counters,
+  now under `structure`. `completionStatus.percentComplete` is replaced
+  by `structure.completion.stage_coverage_percent`, whose denominator is
+  always `len(ThoughtStage)` (5), never hardcoded.
+- **Export/import path errors, invalid stage names, and duplicate
+  `thought_number`** now fail the tool call as a protocol-level error
+  (`MCPError`, JSON-RPC `INVALID_PARAMS`/`REQUEST_TIMEOUT`) instead of
+  being swallowed into a `{"status": "failed"}` response. Execution
+  failures the model can retry past (a missing import file, an
+  unexpected storage error) instead come back as `is_error=True` tool
+  results.
+- Session/export files on disk are unaffected — no schema migration
+  needed, existing `current_session.jsonl` and v1/v2 exports keep
+  working (see `docs/MIGRATION_PLAN.md` §6).
+
+### Added
+
+- **Stage-order warnings**: every `process_thought` response includes a
+  `warnings` list noting a skipped or backward stage transition on the
+  mainline. Permissive by default. New `--strict-stages` CLI flag (and
+  `ThoughtStorage`-adjacent server state) rejects such transitions with
+  `MCPError` instead of just warning.
+- **`--health` CLI subcommand**: checks the storage directory exists, is
+  writable, and that the session lock can be acquired; prints a report
+  and exits 0/1.
+- **`--transport {stdio,sse,streamable-http}`** CLI flag (plus
+  `--host`/`--port`); `stdio` remains the default.
+- Structured stderr logging: each tool call logs start/completion (or
+  failure) with elapsed time in milliseconds.
+- Tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`)
+  are now set per tool — `clear_history` and `import_session` are marked
+  destructive.
+
+### Fixed
+
+- A handful of concurrent `process_thought` calls against the same
+  session could stall for minutes: blocking file I/O (a file lock
+  acquire plus `fsync`) ran synchronously inside an `async def` handler,
+  serializing every concurrent request behind it on the single event-loop
+  thread. Storage calls now run in worker threads
+  (`anyio.to_thread.run_sync`); a lock that can't be acquired within its
+  timeout now fails fast with a clear error instead of blocking.
+- `generate_summary` previously reported only structural statistics
+  (stage/branch/tag counts) with no actual thinking content — it now
+  includes per-stage excerpts of the recorded thoughts, aggregated
+  challenged assumptions, open branches, and revision chains.
+
 ## [0.6.1] - 2026-08-23
 
 ### Fixed

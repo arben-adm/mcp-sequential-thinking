@@ -167,7 +167,7 @@ class AdvancedAnalyzer:
 Add custom prompts to guide the thinking process:
 
 ```python
-from mcp.server.fastmcp.prompts import base
+from mcp.server.mcpserver.prompts import base
 
 
 @mcp.prompt()

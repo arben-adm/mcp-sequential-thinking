@@ -194,13 +194,14 @@ sizes involved — single sentences to short paragraphs). Threshold and top-N
 are constants (`MIN_SIMILARITY = 0.2`, `MAX_RESULTS = 3`), revisited if real
 usage shows they're wrong.
 
-Output: `related_thoughts: list[{number, score, reason}]` where `reason` is
-`"lexical"` for a similarity match or `"stage"` / `"tag:<name>"` when it's a
-categorical match with no lexical overlap (the (a) fallback, kept because
-categorical matches are still occasionally useful signal — e.g. "you're
-still in Research" — even though they're not "related" in the content
-sense). `same_category_thoughts` is kept as a separately-named field so
-nothing pretends categorical proximity is semantic relevance.
+Output: `related_thoughts: list[{number, score, reason="lexical"}]` for the
+content-relevance signal. `same_category_thoughts:
+list[{number, reason="tag:<name>"}]` is the (a) fallback field — but per
+(a)'s own rule, stage equality *alone* is not a match there either; only a
+shared tag qualifies (stage proximity without a tag in common isn't a
+meaningful signal, just calendar adjacency in the thinking process).
+`same_category_thoughts` is kept as a separately-named field so nothing
+pretends categorical proximity is semantic relevance.
 
 ## 6. Session file compatibility
 
