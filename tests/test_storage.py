@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 
 from mcp_sequential_thinking.models import ThoughtStage, ThoughtData
-from mcp_sequential_thinking.storage import ThoughtStorage
+from mcp_sequential_thinking.storage import DuplicateThoughtNumberError, ThoughtStorage
 
 
 def read_jsonl_records(session_file):
@@ -124,6 +124,92 @@ class TestThoughtStorage(unittest.TestCase):
         self.assertEqual(len(research_thoughts), 1)
         self.assertEqual(research_thoughts[0], thought2)
     
+    # ------------------------------------------------------------------
+    # B1: duplicate thought_number rejected per line; next-number assignment
+    # ------------------------------------------------------------------
+    def test_add_thought_duplicate_number_same_line_rejected(self):
+        first = ThoughtData(
+            thought="First",
+            thought_number=1,
+            total_thoughts=2,
+            next_thought_needed=True,
+            stage=ThoughtStage.ANALYSIS,
+        )
+        duplicate = ThoughtData(
+            thought="Duplicate number on the mainline",
+            thought_number=1,
+            total_thoughts=2,
+            next_thought_needed=False,
+            stage=ThoughtStage.CONCLUSION,
+        )
+        self.storage.add_thought(first)
+
+        with self.assertRaises(DuplicateThoughtNumberError):
+            self.storage.add_thought(duplicate)
+
+        # Rejected: history must not have grown.
+        self.assertEqual(len(self.storage.thought_history), 1)
+
+    def test_add_thought_same_number_different_branch_allowed(self):
+        """Uniqueness is scoped per line: the same number on a different
+        branch_id is not a collision."""
+        mainline = ThoughtData(
+            thought="Mainline thought 1",
+            thought_number=1,
+            total_thoughts=3,
+            next_thought_needed=True,
+            stage=ThoughtStage.ANALYSIS,
+        )
+        branch_a = ThoughtData(
+            thought="Branch A's own thought 2",
+            thought_number=2,
+            total_thoughts=2,
+            next_thought_needed=False,
+            stage=ThoughtStage.ANALYSIS,
+            branch_from_thought=1,
+            branch_id="a",
+        )
+        branch_b = ThoughtData(
+            thought="Branch B's own thought 2",
+            thought_number=2,
+            total_thoughts=2,
+            next_thought_needed=False,
+            stage=ThoughtStage.ANALYSIS,
+            branch_from_thought=1,
+            branch_id="b",
+        )
+        self.storage.add_thought(mainline)
+        self.storage.add_thought(branch_a)
+        self.storage.add_thought(branch_b)  # must not raise
+        self.assertEqual(len(self.storage.thought_history), 3)
+
+    def test_next_thought_number_mainline(self):
+        self.assertEqual(self.storage.next_thought_number(branch_id=None), 1)
+        self.storage.add_thought(
+            ThoughtData(
+                thought="One",
+                thought_number=1,
+                total_thoughts=1,
+                next_thought_needed=False,
+                stage=ThoughtStage.ANALYSIS,
+            )
+        )
+        self.assertEqual(self.storage.next_thought_number(branch_id=None), 2)
+
+    def test_next_thought_number_new_branch_continues_from_fork_point(self):
+        self.storage.add_thought(
+            ThoughtData(
+                thought="Mainline",
+                thought_number=3,
+                total_thoughts=3,
+                next_thought_needed=True,
+                stage=ThoughtStage.ANALYSIS,
+            )
+        )
+        self.assertEqual(
+            self.storage.next_thought_number(branch_id="new-branch", branch_from_thought=3), 4
+        )
+
     def test_clear_history(self):
         """Test clearing thought history."""
         thought = ThoughtData(
@@ -200,6 +286,71 @@ class TestThoughtStorage(unittest.TestCase):
         self.assertEqual(len(self.storage.thought_history), 2)
         self.assertEqual(self.storage.thought_history[0].thought, "Test thought 1")
         self.assertEqual(self.storage.thought_history[1].thought, "Test thought 2")
+
+    def test_import_replaces_current_session_not_appends(self):
+        """Don't-touch regression: importing replaces the in-memory/on-disk
+        session outright, it does not append to whatever was already there."""
+        pre_existing = ThoughtData(
+            thought="Pre-existing thought that should be gone after import",
+            thought_number=1,
+            total_thoughts=1,
+            next_thought_needed=False,
+            stage=ThoughtStage.PROBLEM_DEFINITION,
+        )
+        self.storage.add_thought(pre_existing)
+
+        export_dir = Path(self.temp_dir.name) / "exports"
+        export_dir.mkdir()
+        import_file = export_dir / "other_session.json"
+        import_file.write_text(
+            json.dumps(
+                {
+                    "version": 2,
+                    "thoughts": [
+                        {
+                            "thought": "Imported thought",
+                            "thoughtNumber": 1,
+                            "totalThoughts": 1,
+                            "nextThoughtNeeded": False,
+                            "stage": "Conclusion",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        self.storage.import_session("other_session.json")
+
+        self.assertEqual(len(self.storage.thought_history), 1)
+        self.assertEqual(self.storage.thought_history[0].thought, "Imported thought")
+
+    # ------------------------------------------------------------------
+    # B7: a lock that can't be acquired fails cleanly, not by hanging
+    # ------------------------------------------------------------------
+    def test_stale_lock_raises_clean_error_not_hang(self):
+        """A lock file held by someone else (e.g. an orphaned lock) must
+        raise a bounded, clear error instead of hanging indefinitely."""
+        import time
+
+        import portalocker
+
+        storage = ThoughtStorage(self.temp_dir.name, lock_timeout=0.5)
+        thought = ThoughtData(
+            thought="Should fail fast, not hang",
+            thought_number=1,
+            total_thoughts=1,
+            next_thought_needed=False,
+            stage=ThoughtStage.ANALYSIS,
+        )
+
+        with portalocker.Lock(storage.lock_file, timeout=5):
+            start = time.monotonic()
+            with self.assertRaises(portalocker.exceptions.BaseLockException):
+                storage.add_thought(thought)
+            elapsed = time.monotonic() - start
+
+        self.assertLess(elapsed, 3.0, f"took {elapsed:.2f}s, expected to fail near the 0.5s timeout")
 
     # ------------------------------------------------------------------
     # T1: race in _save_session — disk must match memory under concurrency
