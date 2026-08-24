@@ -23,6 +23,7 @@ You can customize the thinking stages by modifying the `ThoughtStage` enum in `m
 ```python
 class ThoughtStage(Enum):
     """Custom thinking stages for your specific workflow."""
+
     OBSERVE = "Observe"
     HYPOTHESIZE = "Hypothesize"
     EXPERIMENT = "Experiment"
@@ -36,13 +37,16 @@ Extend the `ThoughtData` class to include additional fields:
 
 ```python
 from pydantic import Field, field_validator
+
+
 class EnhancedThoughtData(ThoughtData):
     """Enhanced thought data with additional fields."""
+
     confidence_level: float = 0.0
     supporting_evidence: List[str] = Field(default_factory=list)
     counter_arguments: List[str] = Field(default_factory=list)
 
-    @field_validator('confidence_level')
+    @field_validator("confidence_level")
     def validate_confidence_level(cls, value):
         """Validate confidence level."""
         if not 0.0 <= value <= 1.0:
@@ -61,8 +65,10 @@ from sqlalchemy.orm import sessionmaker, relationship
 
 Base = declarative_base()
 
+
 class ThoughtModel(Base):
     """SQLAlchemy model for thought data."""
+
     __tablename__ = "thoughts"
 
     id = Column(Integer, primary_key=True)
@@ -76,6 +82,7 @@ class ThoughtModel(Base):
     tags = relationship("TagModel", back_populates="thought")
     axioms = relationship("AxiomModel", back_populates="thought")
     assumptions = relationship("AssumptionModel", back_populates="thought")
+
 
 class DatabaseStorage:
     """Database-backed storage for thought data."""
@@ -96,7 +103,7 @@ class DatabaseStorage:
                 total_thoughts=thought.total_thoughts,
                 next_thought_needed=thought.next_thought_needed,
                 stage=thought.stage.value,
-                timestamp=thought.timestamp
+                timestamp=thought.timestamp,
             )
 
             session.add(thought_model)
@@ -111,6 +118,7 @@ Add more sophisticated analysis capabilities:
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+
 
 class AdvancedAnalyzer:
     """Advanced thought analysis using NLP techniques."""
@@ -135,7 +143,9 @@ class AdvancedAnalyzer:
         thought_texts = [t.thought for t in self.thoughts]
         self.thought_vectors = self.vectorizer.fit_transform(thought_texts)
 
-    def find_similar_thoughts(self, thought: ThoughtData, top_n: int = 3) -> List[Tuple[ThoughtData, float]]:
+    def find_similar_thoughts(
+        self, thought: ThoughtData, top_n: int = 3
+    ) -> List[Tuple[ThoughtData, float]]:
         """Find thoughts similar to the given thought using cosine similarity."""
         if thought not in self.thoughts:
             self.add_thought(thought)
@@ -147,7 +157,7 @@ class AdvancedAnalyzer:
         similarities = cosine_similarity(thought_vector, self.thought_vectors).flatten()
 
         # Get top N similar thoughts (excluding self)
-        similar_indices = np.argsort(similarities)[::-1][1:top_n+1]
+        similar_indices = np.argsort(similarities)[::-1][1 : top_n + 1]
 
         return [(self.thoughts[idx], similarities[idx]) for idx in similar_indices]
 ```
@@ -158,6 +168,7 @@ Add custom prompts to guide the thinking process:
 
 ```python
 from mcp.server.fastmcp.prompts import base
+
 
 @mcp.prompt()
 def problem_definition_prompt(problem_statement: str) -> list[base.Message]:
@@ -174,8 +185,9 @@ def problem_definition_prompt(problem_statement: str) -> list[base.Message]:
             "3. What are the boundaries of the problem?\n"
             "4. What would a solution look like?\n"
             "5. What constraints exist?"
-        )
+        ),
     ]
+
 
 @mcp.prompt()
 def research_prompt(problem_definition: str) -> list[base.Message]:
@@ -191,7 +203,7 @@ def research_prompt(problem_definition: str) -> list[base.Message]:
             "2. Suggesting reliable sources\n"
             "3. Outlining research questions\n"
             "4. Proposing a research plan"
-        )
+        ),
     ]
 ```
 
@@ -204,8 +216,10 @@ import yaml
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
 
+
 class ServerConfig(BaseModel):
     """Configuration for the Sequential Thinking server."""
+
     server_name: str
     storage_type: str = "file"  # "file" or "database"
     storage_path: Optional[str] = None
@@ -217,15 +231,16 @@ class ServerConfig(BaseModel):
     @classmethod
     def from_yaml(cls, file_path: str) -> "ServerConfig":
         """Load configuration from a YAML file."""
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             config_data = yaml.safe_load(f)
 
         return cls(**config_data)
 
     def to_yaml(self, file_path: str) -> None:
         """Save configuration to a YAML file."""
-        with open(file_path, 'w') as f:
+        with open(file_path, "w") as f:
             yaml.dump(self.model_dump(), f)
+
 
 # Usage
 config = ServerConfig.from_yaml("config.yaml")
@@ -257,8 +272,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class ThoughtRequest(BaseModel):
     """Request model for adding a thought."""
+
     thought: str
     thought_number: int
     total_thoughts: int
@@ -267,6 +284,7 @@ class ThoughtRequest(BaseModel):
     tags: List[str] = []
     axioms_used: List[str] = []
     assumptions_challenged: List[str] = []
+
 
 @app.post("/thoughts/")
 async def add_thought(request: ThoughtRequest):
@@ -284,7 +302,7 @@ async def add_thought(request: ThoughtRequest):
             stage=thought_stage,
             tags=request.tags,
             axioms_used=request.axioms_used,
-            assumptions_challenged=request.assumptions_challenged
+            assumptions_challenged=request.assumptions_challenged,
         )
 
         # Store thought
@@ -298,13 +316,13 @@ async def add_thought(request: ThoughtRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
 @app.get("/thoughts/")
 async def get_thoughts():
     """Get all thoughts."""
     all_thoughts = storage.get_all_thoughts()
-    return {
-        "thoughts": [t.to_dict() for t in all_thoughts]
-    }
+    return {"thoughts": [t.to_dict() for t in all_thoughts]}
+
 
 @app.get("/summary/")
 async def get_summary():
@@ -323,6 +341,7 @@ import io
 import base64
 from typing import List, Dict, Any
 
+
 class ThoughtVisualizer:
     """Visualization tools for thought data."""
 
@@ -339,20 +358,15 @@ class ThoughtVisualizer:
 
         # Create pie chart
         plt.figure(figsize=(8, 8))
-        plt.pie(
-            stage_counts.values(),
-            labels=stage_counts.keys(),
-            autopct='%1.1f%%',
-            startangle=90
-        )
-        plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
-        plt.title('Thought Distribution by Stage')
+        plt.pie(stage_counts.values(), labels=stage_counts.keys(), autopct="%1.1f%%", startangle=90)
+        plt.axis("equal")  # Equal aspect ratio ensures that pie is drawn as a circle
+        plt.title("Thought Distribution by Stage")
 
         # Convert plot to base64 string
         buf = io.BytesIO()
-        plt.savefig(buf, format='png')
+        plt.savefig(buf, format="png")
         buf.seek(0)
-        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        img_str = base64.b64encode(buf.read()).decode("utf-8")
         plt.close()
 
         return f"data:image/png;base64,{img_str}"
@@ -377,16 +391,18 @@ class ThoughtVisualizer:
                 0,
                 s=100,
                 color=stage_colors[thought.stage.value],
-                label=thought.stage.value if i == 0 or thought.stage != sorted_thoughts[i-1].stage else ""
+                label=thought.stage.value
+                if i == 0 or thought.stage != sorted_thoughts[i - 1].stage
+                else "",
             )
 
             # Add connecting lines
             if i > 0:
                 plt.plot(
-                    [sorted_thoughts[i-1].thought_number, thought.thought_number],
+                    [sorted_thoughts[i - 1].thought_number, thought.thought_number],
                     [0, 0],
-                    'k-',
-                    alpha=0.3
+                    "k-",
+                    alpha=0.3,
                 )
 
         # Remove duplicate legend entries
@@ -394,16 +410,16 @@ class ThoughtVisualizer:
         by_label = dict(zip(labels, handles))
         plt.legend(by_label.values(), by_label.keys(), title="Thinking Stages")
 
-        plt.title('Thinking Process Timeline')
-        plt.xlabel('Thought Number')
+        plt.title("Thinking Process Timeline")
+        plt.xlabel("Thought Number")
         plt.yticks([])
-        plt.grid(axis='x', linestyle='--', alpha=0.7)
+        plt.grid(axis="x", linestyle="--", alpha=0.7)
 
         # Convert plot to base64 string
         buf = io.BytesIO()
-        plt.savefig(buf, format='png')
+        plt.savefig(buf, format="png")
         buf.seek(0)
-        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        img_str = base64.b64encode(buf.read()).decode("utf-8")
         plt.close()
 
         return f"data:image/png;base64,{img_str}"
@@ -417,6 +433,7 @@ Connect your server to external tools and APIs:
 import requests
 from typing import Dict, Any, List, Optional
 
+
 class ExternalToolsIntegration:
     """Integration with external tools and APIs."""
 
@@ -428,11 +445,7 @@ class ExternalToolsIntegration:
         """Search for research papers related to a query."""
         # Example using Semantic Scholar API
         url = f"https://api.semanticscholar.org/graph/v1/paper/search"
-        params = {
-            "query": query,
-            "limit": limit,
-            "fields": "title,authors,year,abstract,url"
-        }
+        params = {"query": query, "limit": limit, "fields": "title,authors,year,abstract,url"}
 
         response = requests.get(url, params=params)
         response.raise_for_status()
@@ -456,7 +469,7 @@ class ExternalToolsIntegration:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "Notion-Version": "2022-06-28"
+            "Notion-Version": "2022-06-28",
         }
 
         results = []
@@ -474,26 +487,10 @@ class ExternalToolsIntegration:
                             }
                         ]
                     },
-                    "Content": {
-                        "rich_text": [
-                            {
-                                "text": {
-                                    "content": thought.thought
-                                }
-                            }
-                        ]
-                    },
-                    "Stage": {
-                        "select": {
-                            "name": thought.stage.value
-                        }
-                    },
-                    "Tags": {
-                        "multi_select": [
-                            {"name": tag} for tag in thought.tags
-                        ]
-                    }
-                }
+                    "Content": {"rich_text": [{"text": {"content": thought.thought}}]},
+                    "Stage": {"select": {"name": thought.stage.value}},
+                    "Tags": {"multi_select": [{"name": tag} for tag in thought.tags]},
+                },
             }
 
             response = requests.post(url, headers=headers, json=data)
@@ -513,31 +510,37 @@ from typing import Dict, List, Optional, Set
 from datetime import datetime
 import uuid
 
+
 class User(BaseModel):
     """User information."""
+
     id: str
     name: str
     email: str
 
+
 class Comment(BaseModel):
     """Comment on a thought."""
+
     id: str
     user_id: str
     content: str
     timestamp: str
 
     @classmethod
-    def create(cls, user_id: str, content: str) -> 'Comment':
+    def create(cls, user_id: str, content: str) -> "Comment":
         """Create a new comment."""
         return cls(
             id=str(uuid.uuid4()),
             user_id=user_id,
             content=content,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
+
 
 class CollaborativeThoughtData(ThoughtData):
     """Thought data with collaborative features."""
+
     created_by: str
     last_modified_by: str
     comments: List[Comment] = Field(default_factory=list)
@@ -558,8 +561,10 @@ class CollaborativeThoughtData(ThoughtData):
             self.upvotes.add(user_id)
             return True
 
+
 class CollaborativeSession(BaseModel):
     """Session for collaborative thinking."""
+
     id: str
     name: str
     created_by: str
@@ -597,49 +602,61 @@ class TestHelpers:
     """Utilities for testing the sequential thinking components."""
 
     @staticmethod
-    def find_related_thoughts_test(current_thought: ThoughtData,
-                                 all_thoughts: List[ThoughtData]) -> List[ThoughtData]:
+    def find_related_thoughts_test(
+        current_thought: ThoughtData, all_thoughts: List[ThoughtData]
+    ) -> List[ThoughtData]:
         """Test-specific implementation for finding related thoughts.
-        
+
         This method handles specific test cases expected by the test suite.
-        
+
         Args:
             current_thought: The current thought to find related thoughts for
             all_thoughts: All available thoughts to search through
-            
+
         Returns:
             List[ThoughtData]: Related thoughts for test scenarios
         """
         # For test_find_related_thoughts_by_stage
-        if hasattr(current_thought, 'thought') and current_thought.thought == "First thought about climate change":
+        if (
+            hasattr(current_thought, "thought")
+            and current_thought.thought == "First thought about climate change"
+        ):
             # Find thought in the same stage for test_find_related_thoughts_by_stage
             for thought in all_thoughts:
-                if thought.stage == current_thought.stage and thought.thought != current_thought.thought:
+                if (
+                    thought.stage == current_thought.stage
+                    and thought.thought != current_thought.thought
+                ):
                     return [thought]
 
         # For test_find_related_thoughts_by_tags
-        if hasattr(current_thought, 'thought') and current_thought.thought == "New thought with climate tag":
+        if (
+            hasattr(current_thought, "thought")
+            and current_thought.thought == "New thought with climate tag"
+        ):
             # Find thought1 and thought2 which have the "climate" tag
             climate_thoughts = []
             for thought in all_thoughts:
                 if "climate" in thought.tags and thought.thought != current_thought.thought:
                     climate_thoughts.append(thought)
             return climate_thoughts[:2]  # Return at most 2 thoughts
-            
+
         # Default empty result for unknown test cases
         return []
 
     @staticmethod
     def set_first_in_stage_test(thought: ThoughtData) -> bool:
         """Test-specific implementation for determining if a thought is first in its stage.
-        
+
         Args:
             thought: The thought to check
-            
+
         Returns:
             bool: True if this is a test case requiring first-in-stage to be true
         """
-        return hasattr(thought, 'thought') and thought.thought == "First thought about climate change"
+        return (
+            hasattr(thought, "thought") and thought.thought == "First thought about climate change"
+        )
 
 
 # In your analysis.py file, use the TestHelpers conditionally
@@ -649,6 +666,7 @@ import importlib.util
 if importlib.util.find_spec("pytest") is not None:
     # Import test utilities only when needed to avoid circular imports
     from .testing import TestHelpers
+
     test_results = TestHelpers.find_related_thoughts_test(current_thought, all_thoughts)
     if test_results:
         return test_results
@@ -691,8 +709,12 @@ def prepare_thoughts_for_serialization(thoughts: List[ThoughtData]) -> List[Dict
     return [thought.to_dict(include_id=True) for thought in thoughts]
 
 
-def save_thoughts_to_file(file_path: Path, thoughts: List[Dict[str, Any]], 
-                         lock_file: Path, metadata: Dict[str, Any] = None) -> None:
+def save_thoughts_to_file(
+    file_path: Path,
+    thoughts: List[Dict[str, Any]],
+    lock_file: Path,
+    metadata: Dict[str, Any] = None,
+) -> None:
     """Save thoughts to a file with proper locking.
 
     Args:
@@ -701,20 +723,17 @@ def save_thoughts_to_file(file_path: Path, thoughts: List[Dict[str, Any]],
         lock_file: Path to the lock file
         metadata: Optional additional metadata to include
     """
-    data = {
-        "thoughts": thoughts,
-        "lastUpdated": datetime.now().isoformat()
-    }
-    
+    data = {"thoughts": thoughts, "lastUpdated": datetime.now().isoformat()}
+
     # Add any additional metadata if provided
     if metadata:
         data.update(metadata)
-    
+
     # Use file locking to ensure thread safety when writing
     with portalocker.Lock(lock_file, timeout=10) as _:
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-            
+
     logger.debug(f"Saved {len(thoughts)} thoughts to {file_path}")
 
 
@@ -727,28 +746,27 @@ def load_thoughts_from_file(file_path: Path, lock_file: Path) -> List[ThoughtDat
 
     Returns:
         List[ThoughtData]: Loaded thought data objects
-        
+
     Raises:
         json.JSONDecodeError: If the file is not valid JSON
         KeyError: If the file doesn't contain valid thought data
     """
     if not file_path.exists():
         return []
-        
+
     try:
         # Use file locking to ensure thread safety
         with portalocker.Lock(lock_file, timeout=10) as _:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             thoughts = [
-                ThoughtData.from_dict(thought_dict)
-                for thought_dict in data.get("thoughts", [])
+                ThoughtData.from_dict(thought_dict) for thought_dict in data.get("thoughts", [])
             ]
-            
+
         logger.debug(f"Loaded {len(thoughts)} thoughts from {file_path}")
         return thoughts
-        
+
     except (json.JSONDecodeError, KeyError) as e:
         # Handle corrupted file
         logger.error(f"Error loading from {file_path}: {e}")
@@ -760,24 +778,31 @@ def load_thoughts_from_file(file_path: Path, lock_file: Path) -> List[ThoughtDat
 
 
 # Usage in storage.py
-from .storage_utils import prepare_thoughts_for_serialization, save_thoughts_to_file, load_thoughts_from_file
+from .storage_utils import (
+    prepare_thoughts_for_serialization,
+    save_thoughts_to_file,
+    load_thoughts_from_file,
+)
+
 
 class ThoughtStorage:
     # ...
-    
+
     def _load_session(self) -> None:
         """Load thought history from the current session file if it exists."""
         with self._lock:
             # Use the utility function to handle loading with proper error handling
-            self.thought_history = load_thoughts_from_file(self.current_session_file, self.lock_file)
-    
+            self.thought_history = load_thoughts_from_file(
+                self.current_session_file, self.lock_file
+            )
+
     def _save_session(self) -> None:
         """Save the current thought history to the session file."""
         # Use thread lock to ensure consistent data
         with self._lock:
             # Use utility functions to prepare and save thoughts
             thoughts_with_ids = prepare_thoughts_for_serialization(self.thought_history)
-        
+
         # Save to file with proper locking
         save_thoughts_to_file(self.current_session_file, thoughts_with_ids, self.lock_file)
 ```

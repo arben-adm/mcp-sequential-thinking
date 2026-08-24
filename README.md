@@ -362,7 +362,7 @@ process_thought(
     stage="Problem Definition",
     tags=["climate", "global policy", "systems thinking"],
     axioms_used=["Complex problems require multifaceted solutions"],
-    assumptions_challenged=["Technology alone can solve climate change"]
+    assumptions_challenged=["Technology alone can solve climate change"],
 )
 
 # Revise an earlier thought
@@ -373,7 +373,7 @@ process_thought(
     next_thought_needed=True,
     stage="Problem Definition",
     is_revision=True,
-    revises_thought_number=1
+    revises_thought_number=1,
 )
 
 # Fork an alternative line of reasoning
@@ -384,7 +384,7 @@ process_thought(
     next_thought_needed=True,
     stage="Analysis",
     branch_from_thought=3,
-    branch_id="market-incentives"
+    branch_id="market-incentives",
 )
 ```
 

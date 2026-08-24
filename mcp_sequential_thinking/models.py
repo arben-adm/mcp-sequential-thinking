@@ -1,9 +1,10 @@
 import re
-from typing import List, Optional
-from enum import Enum
 from datetime import datetime
-from uuid import uuid4, UUID
-from pydantic import BaseModel, Field, field_validator, model_validator, ValidationInfo
+from enum import Enum
+from typing import Any
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 # branch_id ends up in files and tool output, so it is restricted to a short,
 # filesystem- and log-safe alphabet.
@@ -13,6 +14,7 @@ BRANCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 class ThoughtStage(Enum):
     """Basic thinking stages for structured sequential thinking."""
+
     PROBLEM_DEFINITION = "Problem Definition"
     RESEARCH = "Research"
     ANALYSIS = "Analysis"
@@ -20,7 +22,7 @@ class ThoughtStage(Enum):
     CONCLUSION = "Conclusion"
 
     @classmethod
-    def from_string(cls, value: str) -> 'ThoughtStage':
+    def from_string(cls, value: str) -> "ThoughtStage":
         """Convert a string to a thinking stage.
 
         Args:
@@ -44,18 +46,19 @@ class ThoughtStage(Enum):
 
 class ThoughtData(BaseModel):
     """Data structure for a single thought in the sequential thinking process."""
+
     thought: str
     thought_number: int
     total_thoughts: int
     next_thought_needed: bool
     stage: ThoughtStage
-    tags: List[str] = Field(default_factory=list)
-    axioms_used: List[str] = Field(default_factory=list)
-    assumptions_challenged: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    axioms_used: list[str] = Field(default_factory=list)
+    assumptions_challenged: list[str] = Field(default_factory=list)
     is_revision: bool = False
-    revises_thought_number: Optional[int] = None
-    branch_from_thought: Optional[int] = None
-    branch_id: Optional[str] = None
+    revises_thought_number: int | None = None
+    branch_from_thought: int | None = None
+    branch_id: str | None = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     id: UUID = Field(default_factory=uuid4)
 
@@ -69,7 +72,7 @@ class ThoughtData(BaseModel):
             return False
         return self.id == other.id
 
-    @field_validator('thought')
+    @field_validator("thought")
     @classmethod
     def thought_not_empty(cls, v: str) -> str:
         """Validate that thought content is not empty."""
@@ -77,7 +80,7 @@ class ThoughtData(BaseModel):
             raise ValueError("Thought content cannot be empty")
         return v
 
-    @field_validator('thought_number')
+    @field_validator("thought_number")
     @classmethod
     def thought_number_positive(cls, v: int) -> int:
         """Validate that thought number is positive."""
@@ -85,26 +88,24 @@ class ThoughtData(BaseModel):
             raise ValueError("Thought number must be positive")
         return v
 
-    @field_validator('total_thoughts')
+    @field_validator("total_thoughts")
     @classmethod
     def total_thoughts_valid(cls, v: int, info: ValidationInfo) -> int:
         """Validate that total thoughts is valid."""
-        thought_number = info.data.get('thought_number')
+        thought_number = info.data.get("thought_number")
         if thought_number is not None and v < thought_number:
             raise ValueError("Total thoughts must be greater or equal to current thought number")
         return v
 
-    @model_validator(mode='after')
-    def validate_revision_and_branch(self) -> 'ThoughtData':
+    @model_validator(mode="after")
+    def validate_revision_and_branch(self) -> "ThoughtData":
         """Validate the cross-field rules for revisions and branches."""
         if self.is_revision and self.revises_thought_number is None:
             raise ValueError("is_revision=True requires revises_thought_number to be set")
         if self.revises_thought_number is not None and not self.is_revision:
             raise ValueError("revises_thought_number requires is_revision=True")
         if self.is_revision and self.branch_from_thought is not None:
-            raise ValueError(
-                "A thought cannot be a revision and a branch start at the same time"
-            )
+            raise ValueError("A thought cannot be a revision and a branch start at the same time")
         if self.branch_id is not None and self.branch_from_thought is None:
             raise ValueError("branch_id requires branch_from_thought to be set")
 
@@ -123,13 +124,12 @@ class ThoughtData(BaseModel):
             or not BRANCH_ID_PATTERN.match(self.branch_id)
         ):
             raise ValueError(
-                f"branch_id must be 1-{BRANCH_ID_MAX_LENGTH} characters from "
-                "[A-Za-z0-9_-]"
+                f"branch_id must be 1-{BRANCH_ID_MAX_LENGTH} characters from [A-Za-z0-9_-]"
             )
 
         return self
 
-    def to_dict(self, include_id: bool = False) -> dict:
+    def to_dict(self, include_id: bool = False) -> dict[str, Any]:
         """Convert the thought data to a dictionary representation.
 
         Args:
@@ -169,7 +169,7 @@ class ThoughtData(BaseModel):
         return result
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'ThoughtData':
+    def from_dict(cls, data: dict[str, Any]) -> "ThoughtData":
         """Create a ThoughtData instance from a dictionary.
 
         Args:
@@ -189,23 +189,23 @@ class ThoughtData(BaseModel):
             "isRevision": "is_revision",
             "revisesThoughtNumber": "revises_thought_number",
             "branchFromThought": "branch_from_thought",
-            "branchId": "branch_id"
+            "branchId": "branch_id",
         }
-        
+
         # Process known direct mappings
         for camel_key, snake_key in mappings.items():
             if camel_key in data:
                 snake_data[snake_key] = data[camel_key]
-        
+
         # Copy fields that don't need conversion
         for key in ["thought", "tags", "timestamp"]:
             if key in data:
                 snake_data[key] = data[key]
-                
+
         # Handle special fields
         if "stage" in data:
             snake_data["stage"] = ThoughtStage.from_string(data["stage"])
-            
+
         # Set default values for missing fields
         snake_data.setdefault("tags", [])
         snake_data.setdefault("axioms_used", data.get("axiomsUsed", []))
@@ -221,6 +221,4 @@ class ThoughtData(BaseModel):
 
         return cls(**snake_data)
 
-    model_config = {
-        "arbitrary_types_allowed": True
-    }
+    model_config = {"arbitrary_types_allowed": True}

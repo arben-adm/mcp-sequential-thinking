@@ -309,9 +309,7 @@ class TestThoughtAnalyzer(unittest.TestCase):
             is_revision=True,
             revises_thought_number=1,
         )
-        self.assertIsNone(
-            ThoughtAnalyzer.detect_stage_transition_issue(revision, [prev, revision])
-        )
+        self.assertIsNone(ThoughtAnalyzer.detect_stage_transition_issue(revision, [prev, revision]))
 
     def test_detect_stage_transition_issue_first_thought_is_none(self):
         first = ThoughtData(
@@ -338,9 +336,7 @@ class TestThoughtAnalyzer(unittest.TestCase):
 
         self.assertTrue(summary.has_thoughts)
         all_excerpts = " ".join(
-            excerpt
-            for stage in summary.content.stage_content
-            for excerpt in stage.excerpts
+            excerpt for stage in summary.content.stage_content for excerpt in stage.excerpts
         )
         self.assertIn("climate change", all_excerpts)
         self.assertIn("emissions data", all_excerpts)

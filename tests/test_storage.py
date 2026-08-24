@@ -1,11 +1,11 @@
-import unittest
-import tempfile
 import json
 import os
+import tempfile
 import threading
+import unittest
 from pathlib import Path
 
-from mcp_sequential_thinking.models import ThoughtStage, ThoughtData
+from mcp_sequential_thinking.models import ThoughtData, ThoughtStage
 from mcp_sequential_thinking.storage import DuplicateThoughtNumberError, ThoughtStorage
 
 
@@ -20,16 +20,16 @@ def read_jsonl_records(session_file):
 
 class TestThoughtStorage(unittest.TestCase):
     """Test cases for the ThoughtStorage class."""
-    
+
     def setUp(self):
         """Set up a temporary directory for storage tests."""
         self.temp_dir = tempfile.TemporaryDirectory()
         self.storage = ThoughtStorage(self.temp_dir.name)
-    
+
     def tearDown(self):
         """Clean up temporary directory."""
         self.temp_dir.cleanup()
-    
+
     def test_add_thought(self):
         """Test adding a thought to storage."""
         thought = ThoughtData(
@@ -37,15 +37,15 @@ class TestThoughtStorage(unittest.TestCase):
             thought_number=1,
             total_thoughts=3,
             next_thought_needed=True,
-            stage=ThoughtStage.PROBLEM_DEFINITION
+            stage=ThoughtStage.PROBLEM_DEFINITION,
         )
-        
+
         self.storage.add_thought(thought)
-        
+
         # Check that the thought was added to memory
         self.assertEqual(len(self.storage.thought_history), 1)
         self.assertEqual(self.storage.thought_history[0], thought)
-        
+
         # Check that the session file was created
         session_file = Path(self.temp_dir.name) / "current_session.jsonl"
         self.assertTrue(session_file.exists())
@@ -56,7 +56,7 @@ class TestThoughtStorage(unittest.TestCase):
         self.assertEqual(header["version"], 2)
         self.assertEqual(len(thoughts), 1)
         self.assertEqual(thoughts[0]["thought"], "Test thought")
-    
+
     def test_get_all_thoughts(self):
         """Test getting all thoughts from storage."""
         thought1 = ThoughtData(
@@ -64,26 +64,26 @@ class TestThoughtStorage(unittest.TestCase):
             thought_number=1,
             total_thoughts=3,
             next_thought_needed=True,
-            stage=ThoughtStage.PROBLEM_DEFINITION
+            stage=ThoughtStage.PROBLEM_DEFINITION,
         )
-        
+
         thought2 = ThoughtData(
             thought="Test thought 2",
             thought_number=2,
             total_thoughts=3,
             next_thought_needed=True,
-            stage=ThoughtStage.RESEARCH
+            stage=ThoughtStage.RESEARCH,
         )
-        
+
         self.storage.add_thought(thought1)
         self.storage.add_thought(thought2)
-        
+
         thoughts = self.storage.get_all_thoughts()
-        
+
         self.assertEqual(len(thoughts), 2)
         self.assertEqual(thoughts[0], thought1)
         self.assertEqual(thoughts[1], thought2)
-    
+
     def test_get_thoughts_by_stage(self):
         """Test getting thoughts by stage."""
         thought1 = ThoughtData(
@@ -91,39 +91,39 @@ class TestThoughtStorage(unittest.TestCase):
             thought_number=1,
             total_thoughts=3,
             next_thought_needed=True,
-            stage=ThoughtStage.PROBLEM_DEFINITION
+            stage=ThoughtStage.PROBLEM_DEFINITION,
         )
-        
+
         thought2 = ThoughtData(
             thought="Test thought 2",
             thought_number=2,
             total_thoughts=3,
             next_thought_needed=True,
-            stage=ThoughtStage.RESEARCH
+            stage=ThoughtStage.RESEARCH,
         )
-        
+
         thought3 = ThoughtData(
             thought="Test thought 3",
             thought_number=3,
             total_thoughts=3,
             next_thought_needed=False,
-            stage=ThoughtStage.PROBLEM_DEFINITION
+            stage=ThoughtStage.PROBLEM_DEFINITION,
         )
-        
+
         self.storage.add_thought(thought1)
         self.storage.add_thought(thought2)
         self.storage.add_thought(thought3)
-        
+
         problem_def_thoughts = self.storage.get_thoughts_by_stage(ThoughtStage.PROBLEM_DEFINITION)
         research_thoughts = self.storage.get_thoughts_by_stage(ThoughtStage.RESEARCH)
-        
+
         self.assertEqual(len(problem_def_thoughts), 2)
         self.assertEqual(problem_def_thoughts[0], thought1)
         self.assertEqual(problem_def_thoughts[1], thought3)
-        
+
         self.assertEqual(len(research_thoughts), 1)
         self.assertEqual(research_thoughts[0], thought2)
-    
+
     # ------------------------------------------------------------------
     # B1: duplicate thought_number rejected per line; next-number assignment
     # ------------------------------------------------------------------
@@ -217,12 +217,12 @@ class TestThoughtStorage(unittest.TestCase):
             thought_number=1,
             total_thoughts=3,
             next_thought_needed=True,
-            stage=ThoughtStage.PROBLEM_DEFINITION
+            stage=ThoughtStage.PROBLEM_DEFINITION,
         )
-        
+
         self.storage.add_thought(thought)
         self.assertEqual(len(self.storage.thought_history), 1)
-        
+
         self.storage.clear_history()
         self.assertEqual(len(self.storage.thought_history), 0)
 
@@ -231,7 +231,7 @@ class TestThoughtStorage(unittest.TestCase):
         header, thoughts = read_jsonl_records(session_file)
         self.assertEqual(header["type"], "header")
         self.assertEqual(len(thoughts), 0)
-    
+
     def test_export_creates_parent_directory(self):
         """Test exporting a session to a nested directory creates parents."""
         thought = ThoughtData(
@@ -256,32 +256,32 @@ class TestThoughtStorage(unittest.TestCase):
             thought_number=1,
             total_thoughts=2,
             next_thought_needed=True,
-            stage=ThoughtStage.PROBLEM_DEFINITION
+            stage=ThoughtStage.PROBLEM_DEFINITION,
         )
-        
+
         thought2 = ThoughtData(
             thought="Test thought 2",
             thought_number=2,
             total_thoughts=2,
             next_thought_needed=False,
-            stage=ThoughtStage.CONCLUSION
+            stage=ThoughtStage.CONCLUSION,
         )
-        
+
         self.storage.add_thought(thought1)
         self.storage.add_thought(thought2)
-        
+
         # Export the session (relative path lands in the exports/ subdirectory)
         export_file = "export.json"
         self.storage.export_session(export_file)
         self.assertTrue((Path(self.temp_dir.name) / "exports" / "export.json").exists())
-        
+
         # Clear the history
         self.storage.clear_history()
         self.assertEqual(len(self.storage.thought_history), 0)
-        
+
         # Import the session
         self.storage.import_session(export_file)
-        
+
         # Check that the thoughts were imported correctly
         self.assertEqual(len(self.storage.thought_history), 2)
         self.assertEqual(self.storage.thought_history[0].thought, "Test thought 1")
@@ -350,7 +350,9 @@ class TestThoughtStorage(unittest.TestCase):
                 storage.add_thought(thought)
             elapsed = time.monotonic() - start
 
-        self.assertLess(elapsed, 3.0, f"took {elapsed:.2f}s, expected to fail near the 0.5s timeout")
+        self.assertLess(
+            elapsed, 3.0, f"took {elapsed:.2f}s, expected to fail near the 0.5s timeout"
+        )
 
     # ------------------------------------------------------------------
     # T1: race in _save_session — disk must match memory under concurrency
@@ -760,9 +762,7 @@ class TestThoughtStorage(unittest.TestCase):
         export_dir = Path(self.temp_dir.name) / "exports"
         export_dir.mkdir()
         future_export = export_dir / "future.json"
-        future_export.write_text(
-            json.dumps({"version": 99, "thoughts": []}), encoding="utf-8"
-        )
+        future_export.write_text(json.dumps({"version": 99, "thoughts": []}), encoding="utf-8")
 
         with self.assertRaises(ValueError):
             self.storage.import_session(str(future_export))
@@ -773,7 +773,7 @@ class TestThoughtStorage(unittest.TestCase):
         self.storage.export_session("versioned.json")
 
         export_file = Path(self.temp_dir.name) / "exports" / "versioned.json"
-        with open(export_file, "r", encoding="utf-8") as f:
+        with open(export_file, encoding="utf-8") as f:
             data = json.load(f)
         self.assertEqual(data["version"], 2)
         self.assertEqual(len(data["thoughts"]), 1)

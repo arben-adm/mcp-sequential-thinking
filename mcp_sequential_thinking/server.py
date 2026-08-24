@@ -3,17 +3,17 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from typing import List, Optional
+from collections.abc import Callable
+from typing import TypeVar
 
 import anyio
 import portalocker
-from portalocker.exceptions import BaseLockException
-from pydantic import ValidationError
-
 from mcp import MCPError
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import INVALID_PARAMS, REQUEST_TIMEOUT, ToolAnnotations
+from portalocker.exceptions import BaseLockException
+from pydantic import ValidationError
 
 # Use absolute imports when running as a script
 try:
@@ -45,6 +45,8 @@ except ImportError:
 
 logger = configure_logging("sequential-thinking.server")
 
+_T = TypeVar("_T")
+
 SERVER_INSTRUCTIONS = (
     "Records and structures a sequential thinking process across five stages "
     "(Problem Definition, Research, Analysis, Synthesis, Conclusion). It "
@@ -68,7 +70,7 @@ storage = ThoughtStorage(storage_dir)
 strict_stages = False
 
 
-async def _call_storage(fn, *args, **kwargs):
+async def _call_storage(fn: Callable[..., _T], *args: object, **kwargs: object) -> _T:
     """Run a blocking ThoughtStorage call off the event loop (B7 fix).
 
     Every ThoughtStorage method takes the same in-process lock, so even a
@@ -100,15 +102,15 @@ async def process_thought(
     total_thoughts: int,
     next_thought_needed: bool,
     stage: str,
-    thought_number: Optional[int] = None,
-    tags: Optional[List[str]] = None,
-    axioms_used: Optional[List[str]] = None,
-    assumptions_challenged: Optional[List[str]] = None,
+    thought_number: int | None = None,
+    tags: list[str] | None = None,
+    axioms_used: list[str] | None = None,
+    assumptions_challenged: list[str] | None = None,
     is_revision: bool = False,
-    revises_thought_number: Optional[int] = None,
-    branch_from_thought: Optional[int] = None,
-    branch_id: Optional[str] = None,
-    ctx: Optional[Context] = None,
+    revises_thought_number: int | None = None,
+    branch_from_thought: int | None = None,
+    branch_id: str | None = None,
+    ctx: Context | None = None,
 ) -> ProcessThoughtResult:
     """Record one thought in the sequential-thinking audit trail.
 
@@ -130,9 +132,12 @@ async def process_thought(
         axioms_used: Optional list of principles or axioms used in this thought
         assumptions_challenged: Optional list of assumptions challenged by this thought
         is_revision: Whether this thought revises an earlier thought
-        revises_thought_number: The number of the earlier thought being revised (required if is_revision is true)
-        branch_from_thought: The thought number this thought branches from, to explore an alternative path
-        branch_id: Identifier for the branch (letters, digits, '-', '_'; max 64 chars; requires branch_from_thought)
+        revises_thought_number: The number of the earlier thought being
+            revised (required if is_revision is true)
+        branch_from_thought: The thought number this thought branches from,
+            to explore an alternative path
+        branch_id: Identifier for the branch (letters, digits, '-', '_'; max
+            64 chars; requires branch_from_thought)
         ctx: MCP request context, used to report progress
 
     Returns:
@@ -177,7 +182,7 @@ async def process_thought(
         transition_issue = ThoughtAnalyzer.detect_stage_transition_issue(
             thought_data, existing_thoughts
         )
-        warnings: List[str] = []
+        warnings: list[str] = []
         if transition_issue:
             if strict_stages:
                 raise MCPError(code=INVALID_PARAMS, message=transition_issue)
@@ -362,7 +367,11 @@ def _health_check() -> int:
         with portalocker.Lock(storage.lock_file, timeout=2):
             pass
         print(f"  OK: session lock acquirable ({storage.lock_file})")
-    except BaseLockException as e:
+    except (BaseLockException, OSError) as e:
+        # OSError also covers the directory-missing/unwritable cases above:
+        # opening the lock file fails outright rather than raising a lock
+        # timeout, and this check must report that cleanly too instead of
+        # letting the exception escape _health_check.
         print(f"  FAIL: could not acquire session lock: {e}")
         healthy = False
 

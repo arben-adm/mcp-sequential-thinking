@@ -1,8 +1,8 @@
 import logging
 import sys
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 
 def configure_logging(name: str = "sequential-thinking") -> logging.Logger:
@@ -18,10 +18,8 @@ def configure_logging(name: str = "sequential-thinking") -> logging.Logger:
     # protocol channel and must never carry log output (B7 observability).
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stderr)
-        ]
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stderr)],
     )
 
     # Get and return the named logger

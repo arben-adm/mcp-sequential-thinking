@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import tempfile
 import time
 import unittest
@@ -20,6 +21,7 @@ class TestServerTools(unittest.TestCase):
         cls._tmp = tempfile.TemporaryDirectory()
         os.environ["MCP_STORAGE_DIR"] = cls._tmp.name
         from mcp_sequential_thinking import server  # noqa: E402
+
         cls.server = server
 
     @classmethod
@@ -223,9 +225,7 @@ class TestServerTools(unittest.TestCase):
             },
         )
         self.assertFalse(result.is_error)
-        self.assertTrue(
-            any("skipped" in w for w in result.structured_content["warnings"])
-        )
+        self.assertTrue(any("skipped" in w for w in result.structured_content["warnings"]))
 
     def test_stage_skip_rejected_in_strict_mode(self):
         self.server.strict_stages = True
@@ -358,10 +358,206 @@ class TestServerTools(unittest.TestCase):
                         },
                     )
                 elapsed = time.monotonic() - start
-                self.assertLess(elapsed, 3.0, f"took {elapsed:.2f}s — should fail near the 0.5s lock timeout")
+                self.assertLess(
+                    elapsed, 3.0, f"took {elapsed:.2f}s — should fail near the 0.5s lock timeout"
+                )
                 self.assertIn("locked", str(ctx.exception).lower())
         finally:
             self.server.storage.lock_timeout = original_timeout
+
+    # ------------------------------------------------------------------
+    # export_session / import_session: success + error-mapping paths
+    # ------------------------------------------------------------------
+    def test_export_and_import_round_trip_via_tools(self):
+        self._call(
+            "process_thought",
+            {
+                "thought": "Exportable thought",
+                "thought_number": 1,
+                "total_thoughts": 1,
+                "next_thought_needed": False,
+                "stage": "Conclusion",
+            },
+        )
+        export_result = self._call("export_session", {"file_path": "roundtrip.json"})
+        self.assertEqual(export_result.structured_content["thought_count"], 1)
+
+        self._call("clear_history", {})
+        import_result = self._call("import_session", {"file_path": "roundtrip.json"})
+        self.assertEqual(import_result.structured_content["thought_count"], 1)
+
+    def test_export_path_traversal_raises_mcp_error(self):
+        with self.assertRaises(MCPError) as ctx:
+            self._call("export_session", {"file_path": "../escape.json"})
+        self.assertIn("resolves outside", str(ctx.exception))
+
+    def test_import_missing_file_is_tool_error_not_mcp_error(self):
+        """A missing import file is an execution-time condition (the model
+        can adapt), not a malformed call — so is_error=True, not MCPError."""
+        result = self._call("import_session", {"file_path": "does-not-exist.json"})
+        self.assertTrue(result.is_error)
+        self.assertIn("not found", result.content[0].text.lower())
+
+    def test_clear_history_wraps_unexpected_storage_error_as_tool_error(self):
+        from unittest.mock import patch
+
+        with patch.object(
+            self.server.storage, "clear_history", side_effect=OSError("disk exploded")
+        ):
+            result = self._call("clear_history", {})
+        self.assertTrue(result.is_error)
+        self.assertIn("disk exploded", result.content[0].text)
+
+    def test_process_thought_wraps_unexpected_storage_error_as_tool_error(self):
+        from unittest.mock import patch
+
+        with patch.object(self.server.storage, "add_thought", side_effect=OSError("disk exploded")):
+            result = self._call(
+                "process_thought",
+                {
+                    "thought": "Should surface as is_error, not hang or crash",
+                    "thought_number": 1,
+                    "total_thoughts": 1,
+                    "next_thought_needed": False,
+                    "stage": "Analysis",
+                },
+            )
+        self.assertTrue(result.is_error)
+
+    def test_clear_history_mcp_error_passes_through_unwrapped(self):
+        from unittest.mock import patch
+
+        from mcp import MCPError
+        from mcp.types import INVALID_PARAMS
+
+        with patch.object(
+            self.server.storage,
+            "clear_history",
+            side_effect=MCPError(code=INVALID_PARAMS, message="synthetic"),
+        ):
+            with self.assertRaises(MCPError):
+                self._call("clear_history", {})
+
+    def test_export_mcp_error_passes_through_unwrapped(self):
+        from unittest.mock import patch
+
+        from mcp import MCPError
+        from mcp.types import INVALID_PARAMS
+
+        with patch.object(
+            self.server.storage,
+            "export_session",
+            side_effect=MCPError(code=INVALID_PARAMS, message="synthetic"),
+        ):
+            with self.assertRaises(MCPError):
+                self._call("export_session", {"file_path": "x.json"})
+
+    def test_export_unexpected_error_is_tool_error(self):
+        from unittest.mock import patch
+
+        with patch.object(
+            self.server.storage, "export_session", side_effect=OSError("disk exploded")
+        ):
+            result = self._call("export_session", {"file_path": "x.json"})
+        self.assertTrue(result.is_error)
+        self.assertIn("disk exploded", result.content[0].text)
+
+    def test_import_bad_schema_version_is_mcp_error(self):
+        """A ValueError from the storage layer (e.g. unknown schema version)
+        maps to MCPError, not is_error=True (B: bad input, not bad luck)."""
+        export_dir = self.server.storage.export_dir
+        export_dir.mkdir(parents=True, exist_ok=True)
+        (export_dir / "future.json").write_text('{"version": 99, "thoughts": []}')
+
+        with self.assertRaises(MCPError) as ctx:
+            self._call("import_session", {"file_path": "future.json"})
+        self.assertIn("Unsupported", str(ctx.exception))
+
+    def test_import_mcp_error_passes_through_unwrapped(self):
+        from unittest.mock import patch
+
+        from mcp import MCPError as MCPErrorCls
+        from mcp.types import INVALID_PARAMS
+
+        with patch.object(
+            self.server.storage,
+            "import_session",
+            side_effect=MCPErrorCls(code=INVALID_PARAMS, message="synthetic"),
+        ):
+            with self.assertRaises(MCPError):
+                self._call("import_session", {"file_path": "x.json"})
+
+    def test_import_unexpected_error_is_tool_error(self):
+        from unittest.mock import patch
+
+        with patch.object(
+            self.server.storage, "import_session", side_effect=OSError("disk exploded")
+        ):
+            result = self._call("import_session", {"file_path": "x.json"})
+        self.assertTrue(result.is_error)
+        self.assertIn("disk exploded", result.content[0].text)
+
+
+class TestHealthCheckAndCli(unittest.TestCase):
+    """Tests for the --health diagnostic and CLI argument wiring.
+
+    Points the existing server module's ``storage`` at a throwaway
+    directory for the duration of each test (restored after) rather than
+    reloading the module — a reload would re-execute the whole module
+    (re-registering tools on a fresh MCPServer) and, since Python modules
+    are singletons, would also repoint the *other* test class's already-
+    bound ``server`` reference.
+    """
+
+    def setUp(self):
+        from mcp_sequential_thinking import server
+        from mcp_sequential_thinking.storage import ThoughtStorage
+
+        self.server = server
+        self._tmp = tempfile.TemporaryDirectory()
+        self._original_storage = server.storage
+        server.storage = ThoughtStorage(self._tmp.name)
+
+    def tearDown(self):
+        self.server.storage = self._original_storage
+        self.server.strict_stages = False
+        self._tmp.cleanup()
+
+    def test_health_check_healthy(self):
+        self.assertEqual(self.server._health_check(), 0)
+
+    def test_health_check_unhealthy_on_held_lock(self):
+        with portalocker.Lock(self.server.storage.lock_file, timeout=5):
+            self.assertEqual(self.server._health_check(), 1)
+
+    def test_health_check_unhealthy_on_missing_storage_dir(self):
+        import shutil
+
+        shutil.rmtree(self.server.storage.storage_dir)
+        self.assertEqual(self.server._health_check(), 1)
+
+    def test_health_check_unhealthy_on_unwritable_storage_dir(self):
+        os.chmod(self.server.storage.storage_dir, 0o500)
+        try:
+            self.assertEqual(self.server._health_check(), 1)
+        finally:
+            os.chmod(self.server.storage.storage_dir, 0o700)
+
+    def test_main_health_flag_exits_with_health_check_code(self):
+        from unittest.mock import patch
+
+        with patch.object(sys, "argv", ["mcp-sequential-thinking", "--health"]):
+            with self.assertRaises(SystemExit) as ctx:
+                self.server.main()
+        self.assertEqual(ctx.exception.code, 0)
+
+    def test_main_strict_stages_flag_sets_module_state(self):
+        from unittest.mock import patch
+
+        with patch.object(sys, "argv", ["mcp-sequential-thinking", "--strict-stages", "--health"]):
+            with self.assertRaises(SystemExit):
+                self.server.main()
+        self.assertTrue(self.server.strict_stages)
 
 
 if __name__ == "__main__":

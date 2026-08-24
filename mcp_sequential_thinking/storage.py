@@ -1,10 +1,9 @@
 import threading
-from typing import List, Optional
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-from .models import ThoughtData, ThoughtStage
 from .logging_conf import configure_logging
+from .models import ThoughtData, ThoughtStage
 from .storage_utils import (
     append_thought_to_jsonl,
     load_thoughts_from_file,
@@ -21,7 +20,7 @@ class DuplicateThoughtNumberError(ValueError):
     """Raised by :meth:`ThoughtStorage.add_thought` when ``thought_number``
     collides with an existing thought on the same line (B1)."""
 
-    def __init__(self, thought_number: int, branch_id: Optional[str], existing: ThoughtData):
+    def __init__(self, thought_number: int, branch_id: str | None, existing: ThoughtData):
         self.thought_number = thought_number
         self.branch_id = branch_id
         self.existing = existing
@@ -36,7 +35,7 @@ class DuplicateThoughtNumberError(ValueError):
 class ThoughtStorage:
     """Storage manager for thought data."""
 
-    def __init__(self, storage_dir: Optional[str] = None, lock_timeout: float = 10.0):
+    def __init__(self, storage_dir: str | None = None, lock_timeout: float = 10.0):
         """Initialize the storage manager.
 
         Args:
@@ -71,7 +70,7 @@ class ThoughtStorage:
 
         # Thread safety
         self._lock = threading.RLock()
-        self.thought_history: List[ThoughtData] = []
+        self.thought_history: list[ThoughtData] = []
 
         # Load existing session if available
         self._load_session()
@@ -110,7 +109,7 @@ class ThoughtStorage:
             raise ValueError(
                 f"Path '{candidate}' resolves outside the allowed export directory. "
                 "Export/import paths must stay within the storage area."
-            )
+            ) from None
         return resolved
 
     def _load_session(self) -> None:
@@ -201,7 +200,7 @@ class ThoughtStorage:
                 timeout=self.lock_timeout,
             )
 
-    def get_all_thoughts(self) -> List[ThoughtData]:
+    def get_all_thoughts(self) -> list[ThoughtData]:
         """Get all thoughts in the current session.
 
         Returns:
@@ -211,7 +210,7 @@ class ThoughtStorage:
             # Return a copy to avoid external modification
             return list(self.thought_history)
 
-    def get_thoughts_by_stage(self, stage: ThoughtStage) -> List[ThoughtData]:
+    def get_thoughts_by_stage(self, stage: ThoughtStage) -> list[ThoughtData]:
         """Get all thoughts in a specific stage.
 
         Args:
@@ -224,7 +223,7 @@ class ThoughtStorage:
             return [t for t in self.thought_history if t.stage == stage]
 
     def next_thought_number(
-        self, branch_id: Optional[str], branch_from_thought: Optional[int] = None
+        self, branch_id: str | None, branch_from_thought: int | None = None
     ) -> int:
         """Compute the next free thought number for a line (B1: used when the
         caller omits ``thought_number``).
@@ -244,7 +243,9 @@ class ThoughtStorage:
             int: The next free thought number.
         """
         with self._lock:
-            line_numbers = [t.thought_number for t in self.thought_history if t.branch_id == branch_id]
+            line_numbers = [
+                t.thought_number for t in self.thought_history if t.branch_id == branch_id
+            ]
             if line_numbers:
                 return max(line_numbers) + 1
             if branch_id is not None and branch_from_thought is not None:
@@ -277,7 +278,7 @@ class ThoughtStorage:
         with self._lock:
             # Use utility function to prepare thoughts for serialization
             thoughts_with_ids = prepare_thoughts_for_serialization(self.thought_history)
-            
+
             # Create export-specific metadata
             metadata = {
                 "exportedAt": datetime.now().isoformat(),
@@ -286,11 +287,11 @@ class ThoughtStorage:
                     "stages": {
                         stage.value: len([t for t in self.thought_history if t.stage == stage])
                         for stage in ThoughtStage
-                    }
-                }
+                    },
+                },
             }
-        
-        lock_file = file_path_obj.with_suffix('.lock')
+
+        lock_file = file_path_obj.with_suffix(".lock")
 
         # Use utility function to save with proper locking
         save_thoughts_to_file(
@@ -315,7 +316,7 @@ class ThoughtStorage:
         """
         # Confine the caller-controlled path to export_dir before any file I/O.
         file_path_obj = self._ensure_within(self.export_dir, file_path)
-        lock_file = file_path_obj.with_suffix('.lock')
+        lock_file = file_path_obj.with_suffix(".lock")
 
         # load_thoughts_from_file returns [] for missing files (recovery
         # behaviour for the server's own session file). For an import that
