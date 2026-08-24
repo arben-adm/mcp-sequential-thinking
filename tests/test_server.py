@@ -536,6 +536,9 @@ class TestHealthCheckAndCli(unittest.TestCase):
         shutil.rmtree(self.server.storage.storage_dir)
         self.assertEqual(self.server._health_check(), 1)
 
+    @unittest.skipIf(
+        sys.platform == "win32", "chmod doesn't reliably restrict directory writes on Windows"
+    )
     def test_health_check_unhealthy_on_unwritable_storage_dir(self):
         os.chmod(self.server.storage.storage_dir, 0o500)
         try:
