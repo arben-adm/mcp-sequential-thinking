@@ -43,7 +43,4 @@ jobs:
       - name: Fresh install in an isolated environment, then start the server
         run: >
           uv run --no-sync --isolated --with . --python ${{ matrix.python-version }}
-          python -c "
-          import mcp_sequential_thinking.server as server;
-          assert server._health_check() == 0, 'health check failed on a fresh install'
-          "
+          python -c "import mcp_sequential_thinking.server as server; assert server._health_check() == 0, 'health check failed on a fresh install'"
