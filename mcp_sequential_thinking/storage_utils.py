@@ -1,13 +1,13 @@
 import json
-import logging
 import os
-from typing import List, Dict, Any
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Any
+
 import portalocker
 
-from .models import ThoughtData
 from .logging_conf import configure_logging
+from .models import ThoughtData
 
 logger = configure_logging("sequential-thinking.storage-utils")
 
@@ -17,7 +17,7 @@ logger = configure_logging("sequential-thinking.storage-utils")
 SCHEMA_VERSION = 2
 
 
-def prepare_thoughts_for_serialization(thoughts: List[ThoughtData]) -> List[Dict[str, Any]]:
+def prepare_thoughts_for_serialization(thoughts: list[ThoughtData]) -> list[dict[str, Any]]:
     """Prepare thoughts for serialization with IDs included.
 
     Args:
@@ -31,9 +31,10 @@ def prepare_thoughts_for_serialization(thoughts: List[ThoughtData]) -> List[Dict
 
 def save_thoughts_to_file(
     file_path: Path,
-    thoughts: List[Dict[str, Any]],
+    thoughts: list[dict[str, Any]],
     lock_file: Path,
-    metadata: Dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+    timeout: float = 10.0,
 ) -> None:
     """Save thoughts to a file with proper locking.
 
@@ -42,11 +43,13 @@ def save_thoughts_to_file(
         thoughts: List of thought dictionaries to save
         lock_file: Path to the lock file
         metadata: Optional additional metadata to include
+        timeout: Seconds to wait for the lock before raising
+            ``portalocker.exceptions.BaseLockException`` (B7).
     """
     data = {
         "version": SCHEMA_VERSION,
         "thoughts": thoughts,
-        "lastUpdated": datetime.now().isoformat()
+        "lastUpdated": datetime.now().isoformat(),
     }
 
     # Add any additional metadata if provided
@@ -58,7 +61,7 @@ def save_thoughts_to_file(
     lock_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Use file locking to ensure thread safety when writing
-    with portalocker.Lock(lock_file, timeout=10) as _:
+    with portalocker.Lock(lock_file, timeout=timeout) as _:
         _atomic_write_text(file_path, json.dumps(data, indent=2, ensure_ascii=False))
 
     logger.debug(f"Saved {len(thoughts)} thoughts to {file_path}")
@@ -76,20 +79,20 @@ def _atomic_write_text(file_path: Path, text: str) -> None:
         file_path: Destination path.
         text: Full file content to write.
     """
-    tmp_path = file_path.with_suffix(file_path.suffix + '.tmp')
-    with open(tmp_path, 'w', encoding='utf-8') as f:
+    tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         f.write(text)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp_path, file_path)
 
 
-def _header_record() -> Dict[str, Any]:
+def _header_record() -> dict[str, Any]:
     """Build the header record that starts every JSONL session file."""
     return {"type": "header", "version": SCHEMA_VERSION, "createdAt": datetime.now().isoformat()}
 
 
-def _dump_record(record: Dict[str, Any]) -> str:
+def _dump_record(record: dict[str, Any]) -> str:
     """Serialize a single JSONL record (compact, UTF-8-friendly)."""
     return json.dumps(record, ensure_ascii=False)
 
@@ -97,7 +100,8 @@ def _dump_record(record: Dict[str, Any]) -> str:
 def append_thought_to_jsonl(
     file_path: Path,
     lock_file: Path,
-    thought_dict: Dict[str, Any],
+    thought_dict: dict[str, Any],
+    timeout: float = 10.0,
 ) -> None:
     """Append a single thought record to a JSONL session file.
 
@@ -109,13 +113,15 @@ def append_thought_to_jsonl(
         file_path: Path to the JSONL session file.
         lock_file: Path to the lock file.
         thought_dict: Serialized thought (as from ``ThoughtData.to_dict``).
+        timeout: Seconds to wait for the lock before raising
+            ``portalocker.exceptions.BaseLockException`` (B7).
     """
     file_path.parent.mkdir(parents=True, exist_ok=True)
     lock_file.parent.mkdir(parents=True, exist_ok=True)
 
-    with portalocker.Lock(lock_file, timeout=10) as _:
+    with portalocker.Lock(lock_file, timeout=timeout) as _:
         is_new_file = not file_path.exists()
-        with open(file_path, 'a', encoding='utf-8') as f:
+        with open(file_path, "a", encoding="utf-8") as f:
             if is_new_file:
                 f.write(_dump_record(_header_record()) + "\n")
             f.write(_dump_record({"type": "thought", **thought_dict}) + "\n")
@@ -128,7 +134,8 @@ def append_thought_to_jsonl(
 def rewrite_jsonl(
     file_path: Path,
     lock_file: Path,
-    thoughts: List[Dict[str, Any]],
+    thoughts: list[dict[str, Any]],
+    timeout: float = 10.0,
 ) -> None:
     """Atomically rewrite a JSONL session file with the given thoughts.
 
@@ -139,6 +146,8 @@ def rewrite_jsonl(
         file_path: Path to the JSONL session file.
         lock_file: Path to the lock file.
         thoughts: Serialized thoughts (as from ``ThoughtData.to_dict``).
+        timeout: Seconds to wait for the lock before raising
+            ``portalocker.exceptions.BaseLockException`` (B7).
     """
     lines = [_dump_record(_header_record())]
     lines.extend(_dump_record({"type": "thought", **t}) for t in thoughts)
@@ -146,7 +155,7 @@ def rewrite_jsonl(
     file_path.parent.mkdir(parents=True, exist_ok=True)
     lock_file.parent.mkdir(parents=True, exist_ok=True)
 
-    with portalocker.Lock(lock_file, timeout=10) as _:
+    with portalocker.Lock(lock_file, timeout=timeout) as _:
         _atomic_write_text(file_path, "\n".join(lines) + "\n")
 
     logger.debug(f"Rewrote {len(thoughts)} thoughts to {file_path}")
@@ -156,7 +165,8 @@ def load_thoughts_from_jsonl(
     file_path: Path,
     lock_file: Path,
     backup_on_corruption: bool = False,
-) -> List[ThoughtData]:
+    timeout: float = 10.0,
+) -> list[ThoughtData]:
     """Load thoughts from a JSONL session file (schema version 2).
 
     Args:
@@ -167,6 +177,8 @@ def load_thoughts_from_jsonl(
             is dropped with a warning and the valid prefix is kept; any other
             corruption renames the file to a ``.bak.<timestamp>`` backup and
             returns an empty list. When False, all errors propagate.
+        timeout: Seconds to wait for the lock before raising
+            ``portalocker.exceptions.BaseLockException`` (B7).
 
     Returns:
         List[ThoughtData]: Loaded thought data objects.
@@ -181,7 +193,10 @@ def load_thoughts_from_jsonl(
         return []
 
     try:
-        with portalocker.Lock(lock_file, timeout=10) as _, open(file_path, 'r', encoding='utf-8') as f:
+        with (
+            portalocker.Lock(lock_file, timeout=timeout) as _,
+            open(file_path, encoding="utf-8") as f,
+        ):
             raw_lines = f.read().splitlines()
 
         # Ignore trailing blank lines.
@@ -205,7 +220,7 @@ def load_thoughts_from_jsonl(
                 "created by a newer release."
             )
 
-        thoughts: List[ThoughtData] = []
+        thoughts: list[ThoughtData] = []
         last_index = len(raw_lines) - 1
         for index, line in enumerate(raw_lines[1:], start=1):
             if not line.strip():
@@ -247,7 +262,8 @@ def load_thoughts_from_file(
     file_path: Path,
     lock_file: Path,
     backup_on_corruption: bool = False,
-) -> List[ThoughtData]:
+    timeout: float = 10.0,
+) -> list[ThoughtData]:
     """Load thoughts from a file with proper locking.
 
     Args:
@@ -259,6 +275,8 @@ def load_thoughts_from_file(
             returned (the server stays up). When False (the default, used for
             ``import_session``), any parse/validation error propagates so the
             caller's input file and current state are left untouched.
+        timeout: Seconds to wait for the lock before raising
+            ``portalocker.exceptions.BaseLockException`` (B7).
 
     Returns:
         List[ThoughtData]: Loaded thought data objects
@@ -279,7 +297,10 @@ def load_thoughts_from_file(
     try:
         # Use file locking and file handling in a single with statement
         # for cleaner resource management
-        with portalocker.Lock(lock_file, timeout=10) as _, open(file_path, 'r', encoding='utf-8') as f:
+        with (
+            portalocker.Lock(lock_file, timeout=timeout) as _,
+            open(file_path, encoding="utf-8") as f,
+        ):
             data = json.load(f)
 
         # Legacy (v0.5.x) exports have no "version" field and count as v1.
@@ -296,7 +317,8 @@ def load_thoughts_from_file(
         # list and wipe the current session.
         if "thoughts" not in data:
             raise KeyError(
-                f"File {file_path} does not contain a 'thoughts' key and is not a valid session file."
+                f"File {file_path} does not contain a 'thoughts' key and is not a "
+                "valid session file."
             )
 
         # Convert data to ThoughtData objects after file is closed

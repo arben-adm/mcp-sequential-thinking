@@ -1,6 +1,6 @@
 [project]
 name = "mcp-sequential-thinking"
-version = "0.6.1"
+version = "0.7.0"
 description = "A Sequential Thinking MCP Server for advanced problem solving"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -10,9 +10,10 @@ authors = [
    { name = "Arben Ademi", email = "arben.ademi@tuta.io" }
 ]
 dependencies = [
-   "mcp>=1.2.0,<2.0.0",
-   "pydantic>=2.0.0",
+   "mcp>=2,<3",
+   "pydantic>=2.12.0",
    "portalocker",
+   "anyio>=4.9",
 ]
 
 [project.scripts]
@@ -22,9 +23,10 @@ mcp-sequential-thinking = "mcp_sequential_thinking.server:main"
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "isort>=5.0.0",
-    "mypy>=1.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-timeout>=2.3.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
 ]
 
 vis = [
@@ -52,15 +54,15 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+asyncio_mode = "auto"
+timeout = 30
 
-[tool.black]
+[tool.ruff]
 line-length = 100
-target-version = ['py310']
-include = '\.pyi?$'
+target-version = "py310"
 
-[tool.isort]
-profile = "black"
-line_length = 100
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -68,6 +70,7 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+strict = true
 
 [build-system]
 requires = ["hatchling"]

@@ -1,10 +1,9 @@
 import threading
-from typing import List, Optional
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-from .models import ThoughtData, ThoughtStage
 from .logging_conf import configure_logging
+from .models import ThoughtData, ThoughtStage
 from .storage_utils import (
     append_thought_to_jsonl,
     load_thoughts_from_file,
@@ -17,15 +16,37 @@ from .storage_utils import (
 logger = configure_logging("sequential-thinking.storage")
 
 
+class DuplicateThoughtNumberError(ValueError):
+    """Raised by :meth:`ThoughtStorage.add_thought` when ``thought_number``
+    collides with an existing thought on the same line (B1)."""
+
+    def __init__(self, thought_number: int, branch_id: str | None, existing: ThoughtData):
+        self.thought_number = thought_number
+        self.branch_id = branch_id
+        self.existing = existing
+        line = "mainline" if branch_id is None else f"branch '{branch_id}'"
+        snippet = existing.thought[:60] + ("..." if len(existing.thought) > 60 else "")
+        super().__init__(
+            f"thought_number {thought_number} is already used on the {line} "
+            f'(existing thought: "{snippet}")'
+        )
+
+
 class ThoughtStorage:
     """Storage manager for thought data."""
 
-    def __init__(self, storage_dir: Optional[str] = None):
+    def __init__(self, storage_dir: str | None = None, lock_timeout: float = 10.0):
         """Initialize the storage manager.
 
         Args:
             storage_dir: Directory to store thought data files. If None, uses a default directory.
+            lock_timeout: Seconds to wait for the file lock before giving up
+                (B7). Callers translate the resulting
+                ``portalocker.exceptions.BaseLockException`` into a clear
+                protocol error instead of hanging indefinitely. Lowered in
+                tests to keep a stale-lock regression test fast.
         """
+        self.lock_timeout = lock_timeout
         if storage_dir is None:
             # Use user's home directory by default
             home_dir = Path.home()
@@ -49,7 +70,7 @@ class ThoughtStorage:
 
         # Thread safety
         self._lock = threading.RLock()
-        self.thought_history: List[ThoughtData] = []
+        self.thought_history: list[ThoughtData] = []
 
         # Load existing session if available
         self._load_session()
@@ -88,7 +109,7 @@ class ThoughtStorage:
             raise ValueError(
                 f"Path '{candidate}' resolves outside the allowed export directory. "
                 "Export/import paths must stay within the storage area."
-            )
+            ) from None
         return resolved
 
     def _load_session(self) -> None:
@@ -106,7 +127,10 @@ class ThoughtStorage:
             # corrupt or invalid file is backed up (or a truncated final line
             # dropped) and we recover rather than crashing the server on startup.
             self.thought_history = load_thoughts_from_jsonl(
-                self.current_session_file, self.lock_file, backup_on_corruption=True
+                self.current_session_file,
+                self.lock_file,
+                backup_on_corruption=True,
+                timeout=self.lock_timeout,
             )
 
     def _migrate_v1_session(self) -> None:
@@ -117,12 +141,16 @@ class ThoughtStorage:
         so a second start only finds the JSONL file.
         """
         thoughts = load_thoughts_from_file(
-            self.legacy_session_file, self.lock_file, backup_on_corruption=True
+            self.legacy_session_file,
+            self.lock_file,
+            backup_on_corruption=True,
+            timeout=self.lock_timeout,
         )
         rewrite_jsonl(
             self.current_session_file,
             self.lock_file,
             prepare_thoughts_for_serialization(thoughts),
+            timeout=self.lock_timeout,
         )
         # On corruption the v1 file was already renamed to a .bak backup.
         if self.legacy_session_file.exists():
@@ -139,16 +167,40 @@ class ThoughtStorage:
 
         Args:
             thought: The thought data to add
+
+        Raises:
+            DuplicateThoughtNumberError: If ``thought.thought_number`` is
+                already used on the same line (mainline or the same
+                ``branch_id``). The check and the append happen under the
+                same lock acquisition, so this holds even under concurrent
+                callers racing on the same number (B1).
         """
         # Memory update AND file append run under the lock so disk order
         # always matches memory order (RLock makes reentrancy harmless).
         with self._lock:
+            existing = next(
+                (
+                    t
+                    for t in self.thought_history
+                    if t.branch_id == thought.branch_id
+                    and t.thought_number == thought.thought_number
+                ),
+                None,
+            )
+            if existing is not None:
+                raise DuplicateThoughtNumberError(
+                    thought.thought_number, thought.branch_id, existing
+                )
+
             self.thought_history.append(thought)
             append_thought_to_jsonl(
-                self.current_session_file, self.lock_file, thought.to_dict(include_id=True)
+                self.current_session_file,
+                self.lock_file,
+                thought.to_dict(include_id=True),
+                timeout=self.lock_timeout,
             )
 
-    def get_all_thoughts(self) -> List[ThoughtData]:
+    def get_all_thoughts(self) -> list[ThoughtData]:
         """Get all thoughts in the current session.
 
         Returns:
@@ -158,7 +210,7 @@ class ThoughtStorage:
             # Return a copy to avoid external modification
             return list(self.thought_history)
 
-    def get_thoughts_by_stage(self, stage: ThoughtStage) -> List[ThoughtData]:
+    def get_thoughts_by_stage(self, stage: ThoughtStage) -> list[ThoughtData]:
         """Get all thoughts in a specific stage.
 
         Args:
@@ -170,11 +222,42 @@ class ThoughtStorage:
         with self._lock:
             return [t for t in self.thought_history if t.stage == stage]
 
+    def next_thought_number(
+        self, branch_id: str | None, branch_from_thought: int | None = None
+    ) -> int:
+        """Compute the next free thought number for a line (B1: used when the
+        caller omits ``thought_number``).
+
+        For the mainline (``branch_id is None``), this continues the highest
+        number used anywhere in the session (mainline or branch), matching
+        the existing convention of one global increasing counter. For a
+        fresh branch with no thoughts yet, numbering continues from its fork
+        point (``branch_from_thought``) rather than restarting.
+
+        Args:
+            branch_id: The line to compute the next number for.
+            branch_from_thought: The fork point, used only when starting a
+                brand-new branch that has no thoughts yet.
+
+        Returns:
+            int: The next free thought number.
+        """
+        with self._lock:
+            line_numbers = [
+                t.thought_number for t in self.thought_history if t.branch_id == branch_id
+            ]
+            if line_numbers:
+                return max(line_numbers) + 1
+            if branch_id is not None and branch_from_thought is not None:
+                return branch_from_thought + 1
+            all_numbers = [t.thought_number for t in self.thought_history]
+            return (max(all_numbers) + 1) if all_numbers else 1
+
     def clear_history(self) -> None:
         """Clear the thought history and rewrite the session file."""
         with self._lock:
             self.thought_history.clear()
-            rewrite_jsonl(self.current_session_file, self.lock_file, [])
+            rewrite_jsonl(self.current_session_file, self.lock_file, [], timeout=self.lock_timeout)
 
     def export_session(self, file_path: str) -> None:
         """Export the current session to a file.
@@ -195,7 +278,7 @@ class ThoughtStorage:
         with self._lock:
             # Use utility function to prepare thoughts for serialization
             thoughts_with_ids = prepare_thoughts_for_serialization(self.thought_history)
-            
+
             # Create export-specific metadata
             metadata = {
                 "exportedAt": datetime.now().isoformat(),
@@ -204,14 +287,16 @@ class ThoughtStorage:
                     "stages": {
                         stage.value: len([t for t in self.thought_history if t.stage == stage])
                         for stage in ThoughtStage
-                    }
-                }
+                    },
+                },
             }
-        
-        lock_file = file_path_obj.with_suffix('.lock')
+
+        lock_file = file_path_obj.with_suffix(".lock")
 
         # Use utility function to save with proper locking
-        save_thoughts_to_file(file_path_obj, thoughts_with_ids, lock_file, metadata)
+        save_thoughts_to_file(
+            file_path_obj, thoughts_with_ids, lock_file, metadata, timeout=self.lock_timeout
+        )
 
     def import_session(self, file_path: str) -> None:
         """Import a session from a file.
@@ -231,7 +316,7 @@ class ThoughtStorage:
         """
         # Confine the caller-controlled path to export_dir before any file I/O.
         file_path_obj = self._ensure_within(self.export_dir, file_path)
-        lock_file = file_path_obj.with_suffix('.lock')
+        lock_file = file_path_obj.with_suffix(".lock")
 
         # load_thoughts_from_file returns [] for missing files (recovery
         # behaviour for the server's own session file). For an import that
@@ -242,7 +327,7 @@ class ThoughtStorage:
         # Use utility function to load thoughts. backup_on_corruption defaults to
         # False, so a malformed/invalid input file raises instead of renaming the
         # caller's file or silently wiping the current session.
-        thoughts = load_thoughts_from_file(file_path_obj, lock_file)
+        thoughts = load_thoughts_from_file(file_path_obj, lock_file, timeout=self.lock_timeout)
 
         with self._lock:
             self.thought_history = thoughts
@@ -250,4 +335,5 @@ class ThoughtStorage:
                 self.current_session_file,
                 self.lock_file,
                 prepare_thoughts_for_serialization(thoughts),
+                timeout=self.lock_timeout,
             )

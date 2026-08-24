@@ -8,26 +8,39 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
+        # Catches the class of break that shipped in mcp 2.0.0 (removed
+        # mcp.server.fastmcp) before it reaches users: the suite must pass
+        # both against whatever is newest on PyPI and against the oldest
+        # 2.x release this package claims to support.
+        mcp-version: ["latest", "2.0.0"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      - run: pytest tests/ -v
+      - name: Pin mcp SDK version under test
+        if: matrix.mcp-version != 'latest'
+        run: pip install "mcp==${{ matrix.mcp-version }}"
+      - run: ruff check .
+      - run: ruff format --check .
       - run: mypy mcp_sequential_thinking/
+      - run: pytest tests/ -v --cov=mcp_sequential_thinking --cov-report=term-missing --cov-fail-under=85
 
   resolve-smoke-test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-      - run: >
+      - name: Fresh install in an isolated environment, then start the server
+        run: >
           uv run --no-sync --isolated --with . --python ${{ matrix.python-version }}
-          python -c "import mcp_sequential_thinking.server"
+          python -c "import mcp_sequential_thinking.server as server; assert server._health_check() == 0, 'health check failed on a fresh install'"

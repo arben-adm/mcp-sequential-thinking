@@ -5,27 +5,27 @@
 
 [![MCP Toplist](https://mcptoplist.com/badge/glama%2Farben-adm%2Fmcp-sequential-thinking.svg)](https://mcptoplist.com/server/glama%2Farben-adm%2Fmcp-sequential-thinking)
 
-A Model Context Protocol (MCP) server that facilitates structured, progressive thinking through defined stages. This tool helps break down complex problems into sequential thoughts, track the progression of your thinking process, and generate summaries.
+A Model Context Protocol (MCP) server providing a structured thinking journal: schema-validated thoughts, an append-only audit trail, structural analysis, and session export/import. It records and organizes a thinking process through defined stages — it does not evaluate, generate, or improve the reasoning itself; that stays with whatever model is calling it.
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 <a href="https://glama.ai/mcp/servers/m83dfy8feg"><img width="380" height="200" src="https://glama.ai/mcp/servers/m83dfy8feg/badge" alt="Sequential Thinking Server MCP server" /></a>
 
 ## Features
 
-- **Structured Thinking Framework**: Organizes thoughts through standard cognitive stages (Problem Definition, Research, Analysis, Synthesis, Conclusion)
+- **Structured Thinking Framework**: Organizes thoughts through standard cognitive stages (Problem Definition, Research, Analysis, Synthesis, Conclusion), with warnings (or, in `--strict-stages` mode, rejection) when a thought skips or backtracks a stage
 - **Revisions & Branching**: Revise earlier thoughts or fork alternative lines of reasoning, with revision- and branch-aware analysis and summaries
-- **Thought Tracking**: Records and manages sequential thoughts with metadata
-- **Related Thought Analysis**: Identifies connections between similar thoughts
-- **Progress Monitoring**: Tracks your position in the overall thinking sequence
-- **Summary Generation**: Creates concise overviews of the entire thought process
+- **Thought Tracking**: Records and manages sequential thoughts with metadata as a structured, typed audit trail (`structured_content` on every tool response)
+- **Related Thought Analysis**: Finds thoughts that are lexically similar to the current one, independent of stage, plus a separate same-tag/same-stage grouping — a categorical signal, not a claim of semantic relevance
+- **Progress Monitoring**: Explicit mainline position, total recorded thoughts, branch count, and revision count — not a single ambiguous percentage
+- **Summary Generation**: Extracts the actual recorded thinking (per-stage excerpts, aggregated challenged assumptions, open branches, revision chains) alongside structural statistics — a deterministic extraction, not new reasoning
 - **Persistent Storage**: Append-only JSONL session log with thread-safety and automatic crash recovery
 - **Data Import/Export**: Share and reuse thinking sessions
 - **Extensible Architecture**: Easily customize and extend functionality
-- **Robust Error Handling**: Graceful handling of edge cases and corrupted data
-- **Type Safety**: Comprehensive type annotations and validation
+- **Robust Error Handling**: Protocol/validation errors (bad stage, duplicate thought number, path traversal) fail the call outright; execution errors the caller can adapt to come back as a normal tool result
+- **Type Safety**: Comprehensive type annotations (`mypy --strict` clean) and Pydantic validation, including declared output schemas for every tool
 
 ## Prerequisites
 
@@ -34,9 +34,9 @@ A Model Context Protocol (MCP) server that facilitates structured, progressive t
 
 ## Key Technologies
 
-- **Pydantic**: For data validation and serialization
+- **Pydantic**: For data validation, serialization, and structured tool output schemas
 - **Portalocker**: For thread-safe file access
-- **FastMCP**: For Model Context Protocol integration
+- **MCP Python SDK 2.x** (`mcp.server.mcpserver.MCPServer`): For Model Context Protocol integration
 
 ## Project Structure
 
@@ -362,7 +362,7 @@ process_thought(
     stage="Problem Definition",
     tags=["climate", "global policy", "systems thinking"],
     axioms_used=["Complex problems require multifaceted solutions"],
-    assumptions_challenged=["Technology alone can solve climate change"]
+    assumptions_challenged=["Technology alone can solve climate change"],
 )
 
 # Revise an earlier thought
@@ -373,7 +373,7 @@ process_thought(
     next_thought_needed=True,
     stage="Problem Definition",
     is_revision=True,
-    revises_thought_number=1
+    revises_thought_number=1,
 )
 
 # Fork an alternative line of reasoning
@@ -384,7 +384,7 @@ process_thought(
     next_thought_needed=True,
     stage="Analysis",
     branch_from_thought=3,
-    branch_id="market-incentives"
+    branch_id="market-incentives",
 )
 ```
 
