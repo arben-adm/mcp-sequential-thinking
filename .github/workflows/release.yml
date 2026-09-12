@@ -3,16 +3,24 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
   pypi:
+    needs: verify
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write
+      actions: read
+      contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4 verified 2026-09-05
         with:
-          python-version: "3.12"
-      - run: pip install build && python -m build
+          name: tested-dist-${{ github.sha }}
+          path: dist/
+      # Trusted Publishing; publish exactly the wheel/sdist verified above.
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

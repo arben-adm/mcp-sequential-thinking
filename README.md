@@ -1,502 +1,237 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/arben-adm-mcp-sequential-thinking-badge.png)](https://mseep.ai/app/arben-adm-mcp-sequential-thinking)
-[![Verified on MseeP](https://mseep.ai/badge.svg)](https://mseep.ai/app/0387db2d-476b-4b3d-852a-d55b4f67d888)
+# MCP Sequential Thinking — working notes you can resume
 
-# Sequential Thinking MCP Server
+<!-- mcp-name: io.github.arben-adm/mcp-sequential-thinking -->
 
-[![MCP Toplist](https://mcptoplist.com/badge/glama%2Farben-adm%2Fmcp-sequential-thinking.svg)](https://mcptoplist.com/server/glama%2Farben-adm%2Fmcp-sequential-thinking)
+A local MCP server for explicit working notes, evidence, decisions and next actions.
+Use it to keep track of a difficult task across interruptions. Simple questions do
+not need a session, a tool call, or five reasoning phases. The server neither asks
+for hidden internal chain-of-thought nor claims to improve general reasoning quality.
 
-A Model Context Protocol (MCP) server providing a structured thinking journal: schema-validated thoughts, an append-only audit trail, structural analysis, and session export/import. It records and organizes a thinking process through defined stages — it does not evaluate, generate, or improve the reasoning itself; that stays with whatever model is calling it.
+**Development candidate: 0.7.0.** GitHub and PyPI still publish **0.6.1** as checked
+on 2026-09-05. The session API described here is in the development branch, not in
+that published package. This upgrade is a development candidate and is not
+merge/release-ready.
 
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+## Try the restart demo
 
-<a href="https://glama.ai/mcp/servers/m83dfy8feg"><img width="380" height="200" src="https://glama.ai/mcp/servers/m83dfy8feg/badge" alt="Sequential Thinking Server MCP server" /></a>
+Python 3.10+ is declared; the release gate runs complete tests on Python 3.10–3.14,
+Linux and Windows, against the minimum and latest compatible MCP SDK. Current
+results are recorded in the CI runs for this branch.
 
-## Features
+From this branch, install it into a virtual environment:
 
-- **Structured Thinking Framework**: Organizes thoughts through standard cognitive stages (Problem Definition, Research, Analysis, Synthesis, Conclusion), with warnings (or, in `--strict-stages` mode, rejection) when a thought skips or backtracks a stage
-- **Revisions & Branching**: Revise earlier thoughts or fork alternative lines of reasoning, with revision- and branch-aware analysis and summaries
-- **Thought Tracking**: Records and manages sequential thoughts with metadata as a structured, typed audit trail (`structured_content` on every tool response)
-- **Related Thought Analysis**: Finds thoughts that are lexically similar to the current one, independent of stage, plus a separate same-tag/same-stage grouping — a categorical signal, not a claim of semantic relevance
-- **Progress Monitoring**: Explicit mainline position, total recorded thoughts, branch count, and revision count — not a single ambiguous percentage
-- **Summary Generation**: Extracts the actual recorded thinking (per-stage excerpts, aggregated challenged assumptions, open branches, revision chains) alongside structural statistics — a deterministic extraction, not new reasoning
-- **Persistent Storage**: Append-only JSONL session log with thread-safety and automatic crash recovery
-- **Data Import/Export**: Share and reuse thinking sessions
-- **Extensible Architecture**: Easily customize and extend functionality
-- **Robust Error Handling**: Protocol/validation errors (bad stage, duplicate thought number, path traversal) fail the call outright; execution errors the caller can adapt to come back as a normal tool result
-- **Type Safety**: Comprehensive type annotations (`mypy --strict` clean) and Pydantic validation, including declared output schemas for every tool
-
-## Prerequisites
-
-- Python 3.10 or higher
-- UV package manager ([Install Guide](https://github.com/astral-sh/uv))
-
-## Key Technologies
-
-- **Pydantic**: For data validation, serialization, and structured tool output schemas
-- **Portalocker**: For thread-safe file access
-- **MCP Python SDK 2.x** (`mcp.server.mcpserver.MCPServer`): For Model Context Protocol integration
-
-## Project Structure
-
-```
-mcp-sequential-thinking/
-├── mcp_sequential_thinking/
-│   ├── server.py       # Main server implementation and MCP tools
-│   ├── models.py       # Data models with Pydantic validation
-│   ├── storage.py      # Thread-safe persistence layer
-│   ├── storage_utils.py # Shared utilities for storage operations
-│   ├── analysis.py     # Thought analysis and pattern detection
-│   ├── utils.py        # Common utilities and helper functions
-│   ├── logging_conf.py # Centralized logging configuration
-│   └── __init__.py     # Package initialization
-├── tests/              
-│   ├── test_analysis.py # Tests for analysis functionality
-│   ├── test_models.py   # Tests for data models
-│   ├── test_storage.py  # Tests for persistence layer
-│   └── __init__.py
-├── run_server.py       # Server entry point script
-├── debug_mcp_connection.py # Utility for debugging connections
-├── README.md           # Main documentation
-├── CHANGELOG.md        # Version history and changes
-├── example.md          # Customization examples
-├── LICENSE             # MIT License
-└── pyproject.toml      # Project configuration and dependencies
+```sh
+python -m venv .venv
+# Linux/macOS: . .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -e .
+python scripts/stdio_smoke.py
 ```
 
-## Quick Start
+Once dependencies are installed, the demo takes a few seconds. It starts a real
+stdio server, creates a session, stores an evidence note and a decision, stops the
+process, starts it again and reads the decision with the same step IDs. It also
+checks an invalid call and an idempotent retry. Its temporary demo data is removed
+at the end. See [the demo script](scripts/stdio_smoke.py) for the complete calls.
 
-The package is published on PyPI as [`mcp-sequential-thinking`](https://pypi.org/project/mcp-sequential-thinking/). The easiest way to run it is via `uvx` — no install step needed:
-
-```bash
-uvx mcp-sequential-thinking
-```
-
-Or install it permanently:
-
-```bash
-pip install mcp-sequential-thinking
-mcp-sequential-thinking
-```
-
-### Development Setup
-
-To work on the code, clone the repository and set it up from source:
-
-1. **Set Up Project**
-   ```bash
-   # Create and activate virtual environment
-   uv venv
-   .venv\Scripts\activate  # Windows
-   source .venv/bin/activate  # Unix
-
-   # Install package and dependencies
-   uv pip install -e .
-
-   # For development with testing tools
-   uv pip install -e ".[dev]"
-
-   # For all optional dependencies
-   uv pip install -e ".[all]"
-   ```
-
-2. **Run the Server**
-   ```bash
-   # Run directly
-   uv run -m mcp_sequential_thinking.server
-
-   # Or use the installed script
-   mcp-sequential-thinking
-   ```
-
-3. **Run Tests**
-   ```bash
-   # Run all tests
-   pytest
-
-   # Run with coverage report
-   pytest --cov=mcp_sequential_thinking
-   ```
-
-## Claude Desktop Integration
-
-Add to your Claude Desktop configuration:
-- **Linux**: `~/.config/Claude/claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-### Option 1: Using uvx with the PyPI package (recommended)
-
-No clone, no venv, no manual updates — uvx fetches the package from PyPI and runs it:
+The essential calls in an MCP client are:
 
 ```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "uvx",
-      "args": ["mcp-sequential-thinking"]
-    }
-  }
-}
+{"tool":"create_session","arguments":{"title":"Choose a local store","request_id":"create-1"}}
+{"tool":"add_step","arguments":{"session_id":"<returned ID>","content":"Two writers must allocate unique positions.","kind":"evidence","request_id":"step-1"}}
+{"tool":"add_step","arguments":{"session_id":"<returned ID>","content":"Use SQLite; verify restore before release.","kind":"decision","request_id":"step-2"}}
+{"tool":"read_session","arguments":{"session_id":"<returned ID>"}}
 ```
 
-To test unreleased changes, point uvx at the repository instead:
+These are example tool names/arguments, not raw JSON-RPC envelopes. After a process
+restart, `list_sessions` finds the task even if the client lost its ID.
+
+## Three useful workflows
+
+- **Debugging:** record a hypothesis and a test result. Use `supersedes_step_id`
+  when a result replaces an earlier claim. Resume omits superseded notes; full
+  history still contains them with their superseded status.
+- **Decisions:** record alternatives, evidence, risks and an explicit chosen option.
+  Finalization stores the caller's outcome and evidence IDs, with a version check.
+  It does not generate a conclusion or verify whether a URL proves a claim.
+- **Research/planning:** keep source URIs, open questions and next actions. Resume
+  shows active decisions/actions and recent notes; paginated reads recover details.
+
+These deterministic storage properties are distinct from a model usefulness
+comparison. **No completed model comparison or universal improvement in answer
+quality is claimed.**
+
+## Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `create_session` | Title and optional `mode="freeform"`; returns ID, version, persistence and retention properties. Optional request ID supports a retry. |
+| `add_step` | Session ID, content and required `request_id`; kind defaults to `note`. Returns the stored UUID, branch position and version. |
+| `list_sessions` | Find by title/status, with cursor and limit. |
+| `read_session` | Default `view="resume"`; use `view="steps"` for complete paginated content, optional kind/step-ID filters and `active_only`. |
+| `finalize_session` | Caller-supplied completion, `expected_version` and request ID. Finalized sessions reject further steps. |
+| `delete_session` | Deletes the selected session's active DB records at `expected_version`; requires request ID. Backups/exports survive. |
+
+Kinds are `note`, `observation`, `evidence`, `assumption`, `option`, `risk`,
+`decision`, `next_action`. There is no required confidence number or total-step
+estimate in the new API. Sources are explicitly **caller supplied and unverified**;
+the base server never fetches their URLs. Imported/source text is data, not an
+instruction to the client.
+
+`parent_step_id` records provenance. `supersedes_step_id` revises an earlier note on
+the same branch; revise the current replacement when extending a revision chain.
+New branches require `branch_from_step_id`; an established branch's origin cannot
+change. All references must stay inside the same session. New IDs are allocated
+by the server, so references can only point backward to existing records.
+
+Retry a mutation with the **same request ID and identical normalized input** after
+an uncertain response. It returns the original result. Reusing the key with new
+content yields `IDEMPOTENCY_CONFLICT`. Keys are scoped by operation/session. This
+is not an exactly-once network guarantee. Finalization's expected version includes
+all steps committed before that version; a concurrent new step causes a conflict.
+There is no reopening operation in this version.
+
+Read defaults are 20 entries and 12,000 characters; `limit` and `max_chars` are
+configurable per read (hard limits 100 and 50,000). Results report truncation and
+limits. Full-history cursors refer to the last returned record; follow them with
+`view="steps"`. Resume excerpts are limited to 500 characters per note; use its ID
+for the full record. For large legacy notes, pass `step_id`, `content_offset=0`
+and optionally `content_chars` (default 4,000; maximum 10,000). Follow the returned
+`next_content_offset` until null; offsets count Unicode characters, not bytes.
+This preserves access to legacy content larger than one response. A large completion may require `max_chars=50000`. These are
+character limits on structured content, not measured token counts or complete
+JSON-RPC frame sizes. List responses and legacy summaries are also bounded.
+
+Errors use `isError=true` on the wire (`is_error` in the Python SDK), stable codes
+such as `INVALID_INPUT`, `UNKNOWN_SESSION`, `INVALID_REFERENCE`, `CONFLICT`,
+`IDEMPOTENCY_CONFLICT`, `STORAGE_BUSY`, and a bounded correction hint. Protocol
+errors remain distinct. Client annotations describe effects; they are not an
+access-control or confirmation mechanism.
+
+## Existing five tools
+
+`process_thought`, `generate_summary`, `clear_history`, `export_session` and
+`import_session` remain available and share the reserved **local `legacy` session**.
+They do not separate parallel tasks or users. Create explicit sessions for new tasks.
+New `add_step`/`delete_session` calls refuse `legacy`; use its original write/clear
+tools. `read_session(session_id="legacy")` can read it.
+
+`process_thought` retains required `total_thoughts`, `next_thought_needed` and
+`stage`. `thought_number` is optional and allocated atomically. Stages are Problem
+Definition, Research, Analysis, Synthesis, Conclusion; their existing
+case-insensitive spelling is accepted. Stage order is advisory unless
+`--strict-stages` is selected. Number-based revision targets resolve on the same
+line; forks resolve on the mainline, with an immutable origin. New UUID-based
+branch revisions belong to the new session API.
+
+Results use the existing 0.7-development snake_case structured output:
+`current_thought`, `analysis`, `context`, `warnings`. Related thoughts are a lexical
+heuristic; `same_category_thoughts` groups by shared tags, not merely equal stage.
+`generate_summary` contains `has_thoughts`, `content`, `structure`, plus
+`total_recorded`, `truncated`, `max_chars` and a `read_session` pointer for full
+history. Its aggregate counters describe the history even when excerpts are cut.
+No structural score should be read as reasoning quality.
+
+Legacy import **replaces** the legacy history: `{"thoughts":[]}` is a valid empty
+replacement; wrong containers, duplicate IDs/positions and invalid references are
+errors. v1/v2 JSON exports remain v1/v2; no multi-session data is disguised as that
+format. Import/export paths are confined to `MCP_STORAGE_DIR/exports`, with limits
+of 16 MiB and 10,000 records. Full multi-session snapshots use the separate SQLite
+backup/restore command below.
+
+## Storage, privacy and operation
+
+```sh
+mcp-sequential-thinking                         # local stdio; protocol only on stdout
+mcp-sequential-thinking --version               # no storage access
+mcp-sequential-thinking --health                # controlled diagnostic
+mcp-sequential-thinking --ephemeral             # memory only; lost on process exit
+```
+
+The default directory is `~/.mcp_sequential_thinking`; set `MCP_STORAGE_DIR` to change
+it. Normal operation persists **plaintext** SQLite data on a local filesystem.
+One connection belongs to each operation/worker thread. SQLite serializes writers,
+uses foreign keys, WAL, synchronous FULL and a five-second busy timeout. Shared
+NFS/SMB storage and multi-host access are outside this design.
+
+`--ephemeral` uses an in-memory database, ignores persistent storage and disables
+file import/export. It cannot survive process restart. There is no automatic
+retention policy. Deletion is scoped to active DB records; it is not secure erasure
+and does not delete backups, exported copies or other client-held content.
+
+Local stdio trusts the operating-system user. A session ID is not authorization.
+HTTP/SSE are experimental; nonlocal binding requires `--allow-nonlocal-http` and
+still provides no production multi-user authentication/isolation guarantee.
+Optional remote package F is not implemented.
+
+## Migration and restore
+
+Stop old server binaries before upgrade. Controlled startup validates/recoveries
+legacy JSONL tails, then migrates the entire history in one SQLite transaction.
+Existing UUIDs, content and timestamp strings are preserved; naive old timestamps
+retain an unknown timezone. Missing old IDs are assigned once. Conflicts stop
+startup; no silent deduplication or renumbering occurs. Unknown future schemas and
+complete/middle corruption preserve original files and fail closed.
+
+A checksum-named source backup and number-to-UUID mapping remain available. New
+servers hold the old file lock for their lifetime to stop exclusive old writers;
+multiple new stdio servers can operate on the SQLite store.
+
+Create a consistent snapshot, including all sessions and retry records:
+
+```sh
+python -m mcp_sequential_thinking.backup create /path/to/storage /path/to/snapshot.sqlite3
+python -m mcp_sequential_thinking.backup restore /path/to/NEW-storage /path/to/snapshot.sqlite3
+```
+
+Snapshot creation uses SQLite's backup API and validates integrity, references and
+schema. It refuses an existing destination. Restore requires a new directory;
+then point `MCP_STORAGE_DIR` there and run `--health`. Keep the prior store until you
+have verified the restored tasks. Never copy only a live main SQLite file while
+ignoring its WAL. **An old JSONL backup is not a lossless downgrade after new SQLite
+writes.** Legacy export preserves only `legacy`; older releases cannot represent
+all new session/typed-record semantics. No automatic downgrade is offered.
+
+Atomic replacement and fsync do not prove survival of every device, filesystem or
+power failure. An interrupted response can follow a commit; retry IDs and verified
+snapshots address those explicit failure classes, not universal durability.
+
+## Client configuration and test status
+
+An MCP host can run the installed executable directly:
 
 ```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/arben-adm/mcp-sequential-thinking",
-        "mcp-sequential-thinking"
-      ]
-    }
-  }
-}
+{"mcpServers":{"working-notes":{"command":"/absolute/path/to/venv/bin/mcp-sequential-thinking","env":{"MCP_STORAGE_DIR":"/absolute/path/to/local-notes"}}}}
 ```
 
-### Option 2: Using the installed entry point
+On Windows use the virtual environment's `Scripts/mcp-sequential-thinking.exe`.
+This is a conventional host configuration example, not a claim that every host
+has been tested.
 
-If you've installed the package with `pip install mcp-sequential-thinking` (or `pip install -e .` from a clone):
+| Client/SDK | OS | Transport | Date | Evidence |
+| --- | --- | --- | --- | --- |
+| Python MCP Client 2.1.1, Python 3.12.13 | Linux | stdio | 2026-09-05 | Discovery/write/read/error/restart, isolated wheel smoke |
+| Python MCP SDK 2.0.0 and latest, Python 3.10–3.14 | Linux/Windows | stdio/in-memory | 2026-09-06 | 20 combinations passed at `af1c7c5`, [CI run](https://github.com/arben-adm/mcp-sequential-thinking/actions/runs/34004038086); later changes require fresh checks |
+| Claude Desktop, Cursor, VS Code, other hosts | untested | stdio | — | Configuration examples only |
 
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "mcp-sequential-thinking"
-    }
-  }
-}
+## Development and release
+
+```sh
+python -m pip install -e '.[dev]' build twine
+ruff check .
+ruff format --check .
+mypy --strict mcp_sequential_thinking
+pytest --cov=mcp_sequential_thinking --cov-fail-under=85
+python scripts/check_artifacts.py               # starts with an empty dist/
 ```
 
-### Option 3: Using a local clone's virtual environment (development)
-
-If you have set up the project with `uv venv && uv pip install -e .`, point directly to the venv Python interpreter. This avoids dependency resolution issues (e.g., on systems with Python 3.14+):
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "/path/to/mcp-sequential-thinking/.venv/bin/python",
-      "args": [
-        "-m",
-        "mcp_sequential_thinking.server"
-      ],
-      "cwd": "/path/to/mcp-sequential-thinking"
-    }
-  }
-}
-```
-
-### Option 4: Using uv run on a local clone (development)
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/path/to/mcp-sequential-thinking",
-        "-m",
-        "mcp_sequential_thinking.server"
-      ]
-    }
-  }
-}
-```
-
-## Editor & IDE Integration
-
-### Cursor
-
-Add to your Cursor MCP configuration at `.cursor/mcp.json` in your project root (or globally at `~/.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "uvx",
-      "args": ["mcp-sequential-thinking"]
-    }
-  }
-}
-```
-
-### VS Code (Copilot MCP)
-
-VS Code supports MCP servers since version 1.99+. Add to `.vscode/mcp.json` in your workspace or to your user `settings.json`:
-
-```json
-{
-  "servers": {
-    "sequential-thinking": {
-      "command": "uvx",
-      "args": ["mcp-sequential-thinking"]
-    }
-  }
-}
-```
-
-> **Note:** Enable MCP support in VS Code via `"chat.mcp.enabled": true` in your settings.
-
-### Zed
-
-Add to your Zed settings (`~/.config/zed/settings.json`):
-
-```json
-{
-  "context_servers": {
-    "sequential-thinking": {
-      "command": {
-        "path": "uvx",
-        "args": ["mcp-sequential-thinking"]
-      }
-    }
-  }
-}
-```
-
-### Claude Code (CLI)
-
-Add the server using the CLI:
-
-```bash
-claude mcp add sequential-thinking -- uvx mcp-sequential-thinking
-```
-
-Or manually create/edit `.mcp.json` in your project root:
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "uvx",
-      "args": ["mcp-sequential-thinking"]
-    }
-  }
-}
-```
-
-### Windsurf
-
-Add to your Windsurf MCP configuration at `~/.codeium/windsurf/mcp_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "command": "uvx",
-      "args": ["mcp-sequential-thinking"]
-    }
-  }
-}
-```
-
-### Gemini CLI
-
-Add to your Gemini CLI settings at `~/.gemini/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "sequential-thinking": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": ["mcp-sequential-thinking"],
-      "env": {}
-    }
-  }
-}
-```
-
-> **Tip:** All editor configurations above run the published PyPI package via `uvx`. To run from a local clone instead (e.g. for development), use `uv run --directory /path/to/mcp-sequential-thinking -m mcp_sequential_thinking.server` or point directly to the venv Python interpreter (see [Claude Desktop Options 3 and 4](#option-3-using-a-local-clones-virtual-environment-development)).
-
-# How It Works
-
-The server maintains a history of thoughts and processes them through a structured workflow. Each thought is validated using Pydantic models, categorized into thinking stages, and stored with relevant metadata in a thread-safe storage system. The server automatically handles data persistence, backup creation, and provides tools for analyzing relationships between thoughts.
-
-Sessions are persisted as an append-only JSONL log at `~/.mcp_sequential_thinking/current_session.jsonl` (override the directory with the `MCP_STORAGE_DIR` environment variable). Each `process_thought` call appends a single fsynced line, so the file doubles as an audit trail and a truncated final line from an interrupted write is recovered automatically. Sessions from v0.5.x (`current_session.json`) are migrated losslessly on first start; the original file is kept as `current_session.json.migrated-to-v2`.
-
-## Usage Guide
-
-The Sequential Thinking server exposes five main tools:
-
-### 1. `process_thought`
-
-Records and analyzes a new thought in your sequential thinking process.
-
-**Parameters:**
-
-- `thought` (string): The content of your thought
-- `thought_number` (integer): Position in your sequence (e.g., 1 for first thought)
-- `total_thoughts` (integer): Expected total thoughts in the sequence
-- `next_thought_needed` (boolean): Whether more thoughts are needed after this one
-- `stage` (string): The thinking stage - must be one of:
-  - "Problem Definition"
-  - "Research"
-  - "Analysis"
-  - "Synthesis"
-  - "Conclusion"
-- `tags` (list of strings, optional): Keywords or categories for your thought
-- `axioms_used` (list of strings, optional): Principles or axioms applied in your thought
-- `assumptions_challenged` (list of strings, optional): Assumptions your thought questions or challenges
-- `is_revision` (boolean, optional): Whether this thought revises an earlier one
-- `revises_thought_number` (integer, optional): The number of the earlier thought being revised (required together with `is_revision`)
-- `branch_from_thought` (integer, optional): The thought number to fork from when exploring an alternative path
-- `branch_id` (string, optional): Identifier for the branch (letters, digits, `-`, `_`; max 64 characters; requires `branch_from_thought`)
-
-**Example:**
-
-```python
-# First thought in a 5-thought sequence
-process_thought(
-    thought="The problem of climate change requires analysis of multiple factors including emissions, policy, and technology adoption.",
-    thought_number=1,
-    total_thoughts=5,
-    next_thought_needed=True,
-    stage="Problem Definition",
-    tags=["climate", "global policy", "systems thinking"],
-    axioms_used=["Complex problems require multifaceted solutions"],
-    assumptions_challenged=["Technology alone can solve climate change"],
-)
-
-# Revise an earlier thought
-process_thought(
-    thought="Framing the problem purely around emissions was too narrow; adaptation matters equally.",
-    thought_number=6,
-    total_thoughts=6,
-    next_thought_needed=True,
-    stage="Problem Definition",
-    is_revision=True,
-    revises_thought_number=1,
-)
-
-# Fork an alternative line of reasoning
-process_thought(
-    thought="What if we approach this from a market-incentive angle instead?",
-    thought_number=7,
-    total_thoughts=7,
-    next_thought_needed=True,
-    stage="Analysis",
-    branch_from_thought=3,
-    branch_id="market-incentives",
-)
-```
-
-### 2. `generate_summary`
-
-Generates a summary of your entire thinking process.
-
-**Example output:**
-
-```json
-{
-  "summary": {
-    "totalThoughts": 5,
-    "stages": {
-      "Problem Definition": 1,
-      "Research": 1,
-      "Analysis": 1,
-      "Synthesis": 1,
-      "Conclusion": 1
-    },
-    "timeline": [
-      {"number": 1, "stage": "Problem Definition"},
-      {"number": 2, "stage": "Research"},
-      {"number": 3, "stage": "Analysis"},
-      {"number": 4, "stage": "Synthesis"},
-      {"number": 5, "stage": "Conclusion"},
-      {"number": 6, "stage": "Problem Definition", "isRevision": true},
-      {"number": 7, "stage": "Analysis", "branchId": "market-incentives"}
-    ],
-    "branches": {
-      "market-incentives": {"fromThought": 3, "thoughtCount": 1}
-    },
-    "revisionCount": 1
-  }
-}
-```
-
-### 3. `clear_history`
-
-Resets the thinking process by clearing all recorded thoughts.
-
-### 4. `export_session`
-
-Exports the current thinking session to a JSON file for sharing or backup.
-
-**Parameters:**
-
-- `file_path` (string): Path to the output JSON file. Since v0.6.0, exports are confined to the `exports/` subdirectory of the storage directory; relative paths resolve to `~/.mcp_sequential_thinking/exports/` and parent directories are created automatically.
-
-**Example:**
-
-```python
-export_session(file_path="my-analysis.json")
-# -> written to ~/.mcp_sequential_thinking/exports/my-analysis.json
-```
-
-### 5. `import_session`
-
-Imports a previously exported thinking session from a JSON file. Exports created with v0.5.x remain importable.
-
-**Parameters:**
-
-- `file_path` (string): Path to the JSON file to import. Like exports, resolved inside the `exports/` subdirectory of the storage directory.
-
-## Comparison to the official sequential-thinking server
-
-The [official MCP sequential-thinking server](https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking) provides the core paradigm: numbered thoughts with revisions and branching, held in memory for the duration of the process. This server implements the same paradigm and adds:
-
-- **Persistence**: sessions survive restarts (append-only JSONL log with crash recovery and automatic migration), and can be exported, shared and re-imported as JSON.
-- **Thinking stages**: thoughts are categorized into cognitive stages (Problem Definition, Research, Analysis, Synthesis, Conclusion), enabling stage-based filtering and completeness checks.
-- **Analysis**: related-thought detection via stages and tags, per-thought progress, and rich summaries including branch and revision statistics.
-
-If you only need ephemeral chain-of-thought scaffolding, the official server is a lighter choice; if you want durable, analyzable thinking sessions, this one is built for that.
-
-## Practical Applications
-
-- **Decision Making**: Work through important decisions methodically
-- **Problem Solving**: Break complex problems into manageable components
-- **Research Planning**: Structure your research approach with clear stages
-- **Writing Organization**: Develop ideas progressively before writing
-- **Project Analysis**: Evaluate projects through defined analytical stages
-
-
-## Getting Started
-
-With the proper MCP setup, simply use the `process_thought` tool to begin working through your thoughts in sequence. As you progress, you can get an overview with `generate_summary` and reset when needed with `clear_history`.
-
-
-
-# Customizing the Sequential Thinking Server
-
-For detailed examples of how to customize and extend the Sequential Thinking server, see [example.md](example.md). It includes code samples for:
-
-- Modifying thinking stages
-- Enhancing thought data structures with Pydantic
-- Adding persistence with databases
-- Implementing enhanced analysis with NLP
-- Creating custom prompts
-- Setting up advanced configurations
-- Building web UI integrations
-- Implementing visualization tools
-- Connecting to external services
-- Creating collaborative environments
-- Separating test code
-- Building reusable utilities
-
-
-
-
-## License
-
-MIT License
-
-
-
+The artifact check builds wheel/sdist, checks metadata, installs the wheel in a
+separate environment, starts it outside this checkout, runs a real restart/retry
+roundtrip, and independently rebuilds the sdist. CI publishes no package. The
+release workflow runs the same full gates and publishes precisely their tested
+artifact using Trusted Publishing **only after an operator publishes a release**.
+Version authority is `mcp_sequential_thinking/_version.py`; release tags must match.
+
+The registry metadata is prepared but not published. The PyPI README marker must
+be present in the published package before registry registration. Repository
+protection and required checks are an explicit operator task.

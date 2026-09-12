@@ -23,6 +23,9 @@ class TestServerTools(unittest.TestCase):
         from mcp_sequential_thinking import server  # noqa: E402
 
         cls.server = server
+        from mcp_sequential_thinking.storage import ThoughtStorage
+
+        cls.server.storage = ThoughtStorage(cls._tmp.name)
 
     @classmethod
     def tearDownClass(cls):
@@ -118,34 +121,33 @@ class TestServerTools(unittest.TestCase):
         self.assertIn("Original take", block["revision_of"]["snippet"])
 
     def test_process_thought_invalid_stage_raises_mcp_error(self):
-        """Don't-touch: stage validation still rejects unknown stages, now as
-        a protocol-level MCPError instead of a silently-swallowed dict."""
-        with self.assertRaises(MCPError) as ctx:
-            self._call(
-                "process_thought",
-                {
-                    "thought": "Bad stage",
-                    "thought_number": 1,
-                    "total_thoughts": 1,
-                    "next_thought_needed": False,
-                    "stage": "Not A Real Stage",
-                },
-            )
-        self.assertIn("Invalid thinking stage", str(ctx.exception))
+        """D: schema errors are correctable isError results without echoing inputs."""
+        result = self._call(
+            "process_thought",
+            {
+                "thought": "Bad stage",
+                "thought_number": 1,
+                "total_thoughts": 1,
+                "next_thought_needed": False,
+                "stage": "Not A Real Stage",
+            },
+        )
+        self.assertTrue(result.is_error)
+        self.assertIn("INVALID_INPUT", result.content[0].text)
 
     def test_process_thought_invalid_revision_params_raise_mcp_error(self):
-        with self.assertRaises(MCPError):
-            self._call(
-                "process_thought",
-                {
-                    "thought": "Bad revision",
-                    "thought_number": 1,
-                    "total_thoughts": 1,
-                    "next_thought_needed": False,
-                    "stage": "Conclusion",
-                    "is_revision": True,  # missing revises_thought_number
-                },
-            )
+        result = self._call(
+            "process_thought",
+            {
+                "thought": "Bad revision",
+                "thought_number": 1,
+                "total_thoughts": 1,
+                "next_thought_needed": False,
+                "stage": "Conclusion",
+                "is_revision": True,  # missing revises_thought_number
+            },
+        )
+        self.assertTrue(result.is_error)
 
     # ------------------------------------------------------------------
     # B1: duplicate thought_number rejected; omitted number auto-assigned
@@ -161,18 +163,18 @@ class TestServerTools(unittest.TestCase):
                 "stage": "Analysis",
             },
         )
-        with self.assertRaises(MCPError) as ctx:
-            self._call(
-                "process_thought",
-                {
-                    "thought": "Duplicate number",
-                    "thought_number": 1,
-                    "total_thoughts": 2,
-                    "next_thought_needed": False,
-                    "stage": "Conclusion",
-                },
-            )
-        self.assertIn("already used", str(ctx.exception))
+        result = self._call(
+            "process_thought",
+            {
+                "thought": "Duplicate number",
+                "thought_number": 1,
+                "total_thoughts": 2,
+                "next_thought_needed": False,
+                "stage": "Conclusion",
+            },
+        )
+        self.assertTrue(result.is_error)
+        self.assertIn("CONFLICT", result.content[0].text)
         # Rejected call must not have grown history (B1: "silently accepted,
         # history grows to 3" is exactly what must NOT happen anymore).
         self.assertEqual(len(self.server.storage.get_all_thoughts()), 1)
@@ -240,17 +242,17 @@ class TestServerTools(unittest.TestCase):
                     "stage": "Problem Definition",
                 },
             )
-            with self.assertRaises(MCPError):
-                self._call(
-                    "process_thought",
-                    {
-                        "thought": "Jump straight to synthesis",
-                        "thought_number": 2,
-                        "total_thoughts": 2,
-                        "next_thought_needed": False,
-                        "stage": "Synthesis",
-                    },
-                )
+            result = self._call(
+                "process_thought",
+                {
+                    "thought": "Jump straight to synthesis",
+                    "thought_number": 2,
+                    "total_thoughts": 2,
+                    "next_thought_needed": False,
+                    "stage": "Synthesis",
+                },
+            )
+            self.assertTrue(result.is_error)
         finally:
             self.server.strict_stages = False
 
@@ -271,6 +273,12 @@ class TestServerTools(unittest.TestCase):
                 "clear_history",
                 "export_session",
                 "import_session",
+                "create_session",
+                "add_step",
+                "list_sessions",
+                "read_session",
+                "finalize_session",
+                "delete_session",
             },
         )
         for tool in tools.values():
@@ -278,6 +286,7 @@ class TestServerTools(unittest.TestCase):
 
         self.assertTrue(tools["clear_history"].annotations.destructive_hint)
         self.assertTrue(tools["import_session"].annotations.destructive_hint)
+        self.assertTrue(tools["export_session"].annotations.destructive_hint)
         self.assertTrue(tools["generate_summary"].annotations.read_only_hint)
 
     def test_generate_summary_and_clear_history_round_trip(self):
@@ -346,22 +355,22 @@ class TestServerTools(unittest.TestCase):
         try:
             with portalocker.Lock(self.server.storage.lock_file, timeout=5):
                 start = time.monotonic()
-                with self.assertRaises(MCPError) as ctx:
-                    self._call(
-                        "process_thought",
-                        {
-                            "thought": "Should fail fast, not hang",
-                            "thought_number": 1,
-                            "total_thoughts": 1,
-                            "next_thought_needed": False,
-                            "stage": "Analysis",
-                        },
-                    )
+                result = self._call(
+                    "process_thought",
+                    {
+                        "thought": "Should fail fast, not hang",
+                        "thought_number": 1,
+                        "total_thoughts": 1,
+                        "next_thought_needed": False,
+                        "stage": "Analysis",
+                    },
+                )
+                self.assertTrue(result.is_error)
                 elapsed = time.monotonic() - start
                 self.assertLess(
                     elapsed, 3.0, f"took {elapsed:.2f}s — should fail near the 0.5s lock timeout"
                 )
-                self.assertIn("locked", str(ctx.exception).lower())
+                self.assertIn("locked", result.content[0].text.lower())
         finally:
             self.server.storage.lock_timeout = original_timeout
 
@@ -387,9 +396,9 @@ class TestServerTools(unittest.TestCase):
         self.assertEqual(import_result.structured_content["thought_count"], 1)
 
     def test_export_path_traversal_raises_mcp_error(self):
-        with self.assertRaises(MCPError) as ctx:
-            self._call("export_session", {"file_path": "../escape.json"})
-        self.assertIn("resolves outside", str(ctx.exception))
+        result = self._call("export_session", {"file_path": "../escape.json"})
+        self.assertTrue(result.is_error)
+        self.assertIn("INVALID_INPUT", result.content[0].text)
 
     def test_import_missing_file_is_tool_error_not_mcp_error(self):
         """A missing import file is an execution-time condition (the model
@@ -406,12 +415,15 @@ class TestServerTools(unittest.TestCase):
         ):
             result = self._call("clear_history", {})
         self.assertTrue(result.is_error)
-        self.assertIn("disk exploded", result.content[0].text)
+        self.assertIn("STORAGE_ERROR", result.content[0].text)
+        self.assertNotIn("disk exploded", result.content[0].text)
 
     def test_process_thought_wraps_unexpected_storage_error_as_tool_error(self):
         from unittest.mock import patch
 
-        with patch.object(self.server.storage, "add_thought", side_effect=OSError("disk exploded")):
+        with patch.object(
+            self.server.storage, "record_thought", side_effect=OSError("disk exploded")
+        ):
             result = self._call(
                 "process_thought",
                 {
@@ -460,7 +472,8 @@ class TestServerTools(unittest.TestCase):
         ):
             result = self._call("export_session", {"file_path": "x.json"})
         self.assertTrue(result.is_error)
-        self.assertIn("disk exploded", result.content[0].text)
+        self.assertIn("STORAGE_ERROR", result.content[0].text)
+        self.assertNotIn("disk exploded", result.content[0].text)
 
     def test_import_bad_schema_version_is_mcp_error(self):
         """A ValueError from the storage layer (e.g. unknown schema version)
@@ -469,9 +482,9 @@ class TestServerTools(unittest.TestCase):
         export_dir.mkdir(parents=True, exist_ok=True)
         (export_dir / "future.json").write_text('{"version": 99, "thoughts": []}')
 
-        with self.assertRaises(MCPError) as ctx:
-            self._call("import_session", {"file_path": "future.json"})
-        self.assertIn("Unsupported", str(ctx.exception))
+        result = self._call("import_session", {"file_path": "future.json"})
+        self.assertTrue(result.is_error)
+        self.assertIn("INVALID_INPUT", result.content[0].text)
 
     def test_import_mcp_error_passes_through_unwrapped(self):
         from unittest.mock import patch
@@ -495,7 +508,8 @@ class TestServerTools(unittest.TestCase):
         ):
             result = self._call("import_session", {"file_path": "x.json"})
         self.assertTrue(result.is_error)
-        self.assertIn("disk exploded", result.content[0].text)
+        self.assertIn("STORAGE_ERROR", result.content[0].text)
+        self.assertNotIn("disk exploded", result.content[0].text)
 
 
 class TestHealthCheckAndCli(unittest.TestCase):
@@ -549,7 +563,10 @@ class TestHealthCheckAndCli(unittest.TestCase):
     def test_main_health_flag_exits_with_health_check_code(self):
         from unittest.mock import patch
 
-        with patch.object(sys, "argv", ["mcp-sequential-thinking", "--health"]):
+        with (
+            patch.dict(os.environ, {"MCP_STORAGE_DIR": self._tmp.name}),
+            patch.object(sys, "argv", ["mcp-sequential-thinking", "--health"]),
+        ):
             with self.assertRaises(SystemExit) as ctx:
                 self.server.main()
         self.assertEqual(ctx.exception.code, 0)
@@ -557,7 +574,10 @@ class TestHealthCheckAndCli(unittest.TestCase):
     def test_main_strict_stages_flag_sets_module_state(self):
         from unittest.mock import patch
 
-        with patch.object(sys, "argv", ["mcp-sequential-thinking", "--strict-stages", "--health"]):
+        with (
+            patch.dict(os.environ, {"MCP_STORAGE_DIR": self._tmp.name}),
+            patch.object(sys, "argv", ["mcp-sequential-thinking", "--strict-stages", "--health"]),
+        ):
             with self.assertRaises(SystemExit):
                 self.server.main()
         self.assertTrue(self.server.strict_stages)

@@ -36,6 +36,8 @@ class SameCategoryThought(BaseModel):
 
 
 class CurrentThought(BaseModel):
+    step_id: str = ""
+    session_id: str = "legacy"
     thought_number: int
     total_thoughts: int
     next_thought_needed: bool
@@ -128,6 +130,11 @@ class SummaryStructure(BaseModel):
 
 
 class SummaryResult(BaseModel):
+    total_recorded: int = 0
+    truncated: bool = False
+    max_chars: int = 12000
+    full_history_tool: str = "read_session"
+    session_id: str = "legacy"
     has_thoughts: bool
     message: str | None = None
     content: SummaryContent | None = None

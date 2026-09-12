@@ -586,7 +586,7 @@ class ThoughtAnalyzer:
                 (
                     t
                     for t in all_thoughts
-                    if ThoughtAnalyzer._is_mainline(t)
+                    if t.branch_id == thought.branch_id
                     and t.thought_number == thought.revises_thought_number
                 ),
                 None,
@@ -615,6 +615,7 @@ class ThoughtAnalyzer:
 
         return ProcessThoughtResult(
             current_thought=CurrentThought(
+                step_id=str(thought.id),
                 thought_number=thought.thought_number,
                 total_thoughts=thought.total_thoughts,
                 next_thought_needed=thought.next_thought_needed,

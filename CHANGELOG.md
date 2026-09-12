@@ -1,6 +1,29 @@
 # Changelog
 
-## [0.7.0] - 2026-08-24
+## [0.7.0] — Unreleased development candidate
+
+### Reliability upgrade (2026-09-05)
+
+- Serialize JSONL recovery and mutations; repair incomplete UTF-8/JSON tails with
+  exact backups; reject complete corruption, future schemas and identity conflicts.
+- Add transactional SQLite sessions, ID references, request-ID retries, versioned
+  finalization, bounded resume/full reads and explicit typed completion records.
+- Migrate legacy UUIDs and contents without deduplication; keep the five tools on
+  the explicit legacy session, with guarded old-writer exclusion and snapshot restore.
+- Add memory-only operation, controlled diagnostics, schema limits and sanitized
+  correctable tool errors. Legacy stage spelling remains case insensitive.
+- Extend process/crash/fault/stdio tests and complete Python/Windows/SDK gates;
+  test installed artifacts outside the checkout and publish the same tested files.
+- Prepare a bilingual evaluation collection and registry metadata. A completed
+  model usefulness comparison is still required; no general quality claim is made.
+
+Compatibility changes: corrupt storage fails closed rather than starting empty;
+correctable legacy errors are now isError tool results; inputs/outputs have explicit
+limits; source imports no longer initialize storage. SQLite snapshots are required
+for complete restore after new writes; legacy JSONL alone cannot downgrade all
+session semantics. See the README for details.
+
+### Earlier 0.7 development work (2026-08-24; not a published release)
 
 ### Breaking
 
