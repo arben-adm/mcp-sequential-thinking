@@ -3,3 +3,8 @@ __pycache__
 *.pyc
 .coverage
 CLAUDE.md
+.coverage.*
+dist/
+*.egg-info/
+AGENTS.md
+codex-session-*.md

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.arben-adm/mcp-sequential-thinking",
+  "title": "Sequential Thinking Working Notes",
+  "description": "Local working notes, decisions, evidence and resumable sessions with SQLite persistence.",
+  "version": "0.7.0",
+  "repository": {
+    "url": "https://github.com/arben-adm/mcp-sequential-thinking",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-sequential-thinking",
+      "version": "0.7.0",
+      "transport": {"type": "stdio"},
+      "environmentVariables": [
+        {"name": "MCP_STORAGE_DIR", "description": "Local plaintext storage directory; defaults to ~/.mcp_sequential_thinking", "isRequired": false, "isSecret": false}
+      ]
+    }
+  ]
+}

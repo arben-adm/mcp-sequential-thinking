@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
@@ -12,7 +14,7 @@ BRANCH_ID_MAX_LENGTH = 64
 BRANCH_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-class ThoughtStage(Enum):
+class ThoughtStage(str, Enum):
     """Basic thinking stages for structured sequential thinking."""
 
     PROBLEM_DEFINITION = "Problem Definition"
@@ -22,7 +24,15 @@ class ThoughtStage(Enum):
     CONCLUSION = "Conclusion"
 
     @classmethod
-    def from_string(cls, value: str) -> "ThoughtStage":
+    def _missing_(cls, value: object) -> ThoughtStage | None:
+        if isinstance(value, str):
+            return next(
+                (stage for stage in cls if stage.value.casefold() == value.casefold()), None
+            )
+        return None
+
+    @classmethod
+    def from_string(cls, value: str) -> ThoughtStage:
         """Convert a string to a thinking stage.
 
         Args:
@@ -47,19 +57,19 @@ class ThoughtStage(Enum):
 class ThoughtData(BaseModel):
     """Data structure for a single thought in the sequential thinking process."""
 
-    thought: str
+    thought: str = Field(max_length=100000)
     thought_number: int
     total_thoughts: int
     next_thought_needed: bool
     stage: ThoughtStage
-    tags: list[str] = Field(default_factory=list)
-    axioms_used: list[str] = Field(default_factory=list)
-    assumptions_challenged: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list, max_length=100)
+    axioms_used: list[str] = Field(default_factory=list, max_length=100)
+    assumptions_challenged: list[str] = Field(default_factory=list, max_length=100)
     is_revision: bool = False
     revises_thought_number: int | None = None
     branch_from_thought: int | None = None
     branch_id: str | None = None
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     id: UUID = Field(default_factory=uuid4)
 
     def __hash__(self) -> int:
@@ -98,7 +108,7 @@ class ThoughtData(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_revision_and_branch(self) -> "ThoughtData":
+    def validate_revision_and_branch(self) -> ThoughtData:
         """Validate the cross-field rules for revisions and branches."""
         if self.is_revision and self.revises_thought_number is None:
             raise ValueError("is_revision=True requires revises_thought_number to be set")
@@ -169,7 +179,7 @@ class ThoughtData(BaseModel):
         return result
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ThoughtData":
+    def from_dict(cls, data: dict[str, Any]) -> ThoughtData:
         """Create a ThoughtData instance from a dictionary.
 
         Args:
@@ -178,6 +188,35 @@ class ThoughtData(BaseModel):
         Returns:
             ThoughtData: A new ThoughtData instance
         """
+        if not isinstance(data, dict):
+            raise ValueError("Thought record must be an object")
+        allowed = {
+            "thought",
+            "thoughtNumber",
+            "totalThoughts",
+            "nextThoughtNeeded",
+            "stage",
+            "tags",
+            "axiomsUsed",
+            "assumptionsChallenged",
+            "timestamp",
+            "id",
+            "isRevision",
+            "revisesThoughtNumber",
+            "branchFromThought",
+            "branchId",
+            "type",
+        }
+        if set(data) - allowed:
+            raise ValueError("Unknown thought record fields; use a compatible format")
+        if not isinstance(data.get("stage"), str):
+            raise ValueError("Stage must be a string")
+        for field in ("tags", "axiomsUsed", "assumptionsChallenged"):
+            value = data.get(field, [])
+            if not isinstance(value, list) or any(
+                not isinstance(v, str) or len(v) > 1000 for v in value
+            ):
+                raise ValueError("List fields require strings of at most 1000 characters")
         # Convert any camelCase keys to snake_case
         snake_data = {}
         mappings = {
@@ -210,14 +249,11 @@ class ThoughtData(BaseModel):
         snake_data.setdefault("tags", [])
         snake_data.setdefault("axioms_used", data.get("axiomsUsed", []))
         snake_data.setdefault("assumptions_challenged", data.get("assumptionsChallenged", []))
-        snake_data.setdefault("timestamp", datetime.now().isoformat())
+        snake_data.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
 
         # Add ID if present, otherwise generate a new one
         if "id" in data:
-            try:
-                snake_data["id"] = UUID(data["id"])
-            except (ValueError, TypeError):
-                snake_data["id"] = uuid4()
+            snake_data["id"] = data["id"]
 
         return cls(**snake_data)
 

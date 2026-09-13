@@ -270,7 +270,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 
 def _excerpt(text: str, length: int = EXCERPT_LENGTH) -> str:
     """First sentence, or a truncated prefix if there's no sentence break."""
-    match = re.search(r"[.!?]", text)
+    match = re.search(r"[.!?](?=\s|$)", text)
     if match and match.end() <= length:
         return text[: match.end()]
     return text[:length] + "…" if len(text) > length else text
@@ -317,7 +317,13 @@ class ThoughtAnalyzer:
 
         scored.sort(key=lambda pair: (pair[1], pair[0].thought_number), reverse=True)
         return [
-            RelatedThought(number=t.thought_number, score=round(score, 4), reason="lexical")
+            RelatedThought(
+                number=t.thought_number,
+                step_id=str(t.id),
+                branch_id=t.branch_id,
+                score=round(score, 4),
+                reason="lexical",
+            )
             for t, score in scored[:max_results]
         ]
 
@@ -347,7 +353,9 @@ class ThoughtAnalyzer:
 
         matches.sort(key=lambda pair: pair[0].thought_number)
         return [
-            SameCategoryThought(number=t.thought_number, reason=reason)
+            SameCategoryThought(
+                number=t.thought_number, step_id=str(t.id), branch_id=t.branch_id, reason=reason
+            )
             for t, reason in matches[:max_results]
         ]
 
@@ -398,15 +406,15 @@ class ThoughtAnalyzer:
         ``len(ThoughtStage)``, derived from the enum, never hardcoded."""
         stages_total = len(ThoughtStage)
         covered = {t.stage for t in thoughts}
-        stages_covered = len(covered)
-        percent = (stages_covered / stages_total) * 100 if stages_total else 0.0
+        stages_used = len(covered)
+        percent = (stages_used / stages_total) * 100 if stages_total else 0.0
         skipped = [s.value for s in ThoughtStage if s not in covered]
         return StageCompletion(
-            stages_covered=stages_covered,
+            stages_used=stages_used,
             stages_total=stages_total,
-            stage_coverage_percent=percent,
-            has_all_stages=stages_covered == stages_total,
-            skipped_stages=skipped,
+            stages_used_percent=percent,
+            uses_all_stages=stages_used == stages_total,
+            stages_not_used=skipped,
         )
 
     @staticmethod
@@ -467,27 +475,31 @@ class ThoughtAnalyzer:
             if all(t.next_thought_needed for t in ts)
         ]
 
-        revision_map: dict[int, list[int]] = defaultdict(list)
+        revision_map: dict[tuple[str | None, int], list[int]] = defaultdict(list)
         for t in sorted_thoughts:
             if t.is_revision and t.revises_thought_number is not None:
-                revision_map[t.revises_thought_number].append(t.thought_number)
+                revision_map[(t.branch_id, t.revises_thought_number)].append(t.thought_number)
         revision_chains = [
-            RevisionChainEntry(original_thought_number=original, replaced_by=sorted(by))
-            for original, by in sorted(revision_map.items())
+            RevisionChainEntry(
+                branch_id=branch, original_thought_number=original, replaced_by=sorted(by)
+            )
+            for (branch, original), by in sorted(
+                revision_map.items(), key=lambda item: (item[0][0] or "", item[0][1])
+            )
         ]
 
-        gaps: list[str] = []
+        stage_transitions: list[str] = []
         for t in mainline_thoughts:
             issue = ThoughtAnalyzer.detect_stage_transition_issue(t, thoughts)
             if issue:
-                gaps.append(issue)
+                stage_transitions.append(issue)
 
         content = SummaryContent(
             stage_content=stage_content,
             assumptions_challenged=assumptions_challenged,
             open_branches=open_branches,
             revision_chains=revision_chains,
-            gaps=gaps,
+            stage_transitions=stage_transitions,
         )
 
         # --- structure section (statistics only) --------------------------
@@ -586,7 +598,7 @@ class ThoughtAnalyzer:
                 (
                     t
                     for t in all_thoughts
-                    if ThoughtAnalyzer._is_mainline(t)
+                    if t.branch_id == thought.branch_id
                     and t.thought_number == thought.revises_thought_number
                 ),
                 None,
@@ -594,6 +606,8 @@ class ThoughtAnalyzer:
             if revised is not None:
                 revision_of = RevisionOf(
                     thought_number=revised.thought_number,
+                    step_id=str(revised.id),
+                    branch_id=revised.branch_id,
                     stage=revised.stage.value,
                     snippet=_excerpt(revised.thought),
                 )
@@ -615,6 +629,7 @@ class ThoughtAnalyzer:
 
         return ProcessThoughtResult(
             current_thought=CurrentThought(
+                step_id=str(thought.id),
                 thought_number=thought.thought_number,
                 total_thoughts=thought.total_thoughts,
                 next_thought_needed=thought.next_thought_needed,
