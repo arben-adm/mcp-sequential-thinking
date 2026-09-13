@@ -8,14 +8,30 @@ switch key names.
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import BaseModel, Field
+
+# Legacy results keep null for the mainline instead of normalizing it to "main",
+# because a legacy branch may itself be named "main" and the two must stay
+# distinguishable. The SQLite store namespaces them instead: the mainline is
+# "main" and a legacy branch X is stored as "legacy-X".
+LegacyBranchID = Annotated[
+    str | None,
+    Field(
+        description=(
+            "null is the legacy mainline; a named branch keeps its own name here and "
+            "is stored as legacy-<name>"
+        )
+    ),
+]
 
 
 class RevisionOf(BaseModel):
     """A snippet of the mainline thought a revision replaces."""
 
     step_id: str = ""
-    branch_id: str | None = None
+    branch_id: LegacyBranchID = None
     thought_number: int
     stage: str
     snippet: str
@@ -25,7 +41,7 @@ class RelatedThought(BaseModel):
     """A lexically similar thought, possibly in a different stage."""
 
     step_id: str = ""
-    branch_id: str | None = None
+    branch_id: LegacyBranchID = None
     number: int
     score: float
     reason: str
@@ -36,7 +52,7 @@ class SameCategoryThought(BaseModel):
     not necessarily content-related — see docs/MIGRATION_PLAN.md B4)."""
 
     step_id: str = ""
-    branch_id: str | None = None
+    branch_id: LegacyBranchID = None
     number: int
     reason: str
 
@@ -69,7 +85,7 @@ class ThoughtAnalysis(BaseModel):
     is_first_in_stage: bool
     is_revision: bool
     revised_thought: int | None = None
-    branch_id: str | None = None
+    branch_id: LegacyBranchID = None
     revision_of: RevisionOf | None = None
 
 
@@ -90,11 +106,11 @@ class ProcessThoughtResult(BaseModel):
 
 
 class StageCompletion(BaseModel):
-    stages_covered: int
+    stages_used: int
     stages_total: int
-    stage_coverage_percent: float
-    has_all_stages: bool
-    skipped_stages: list[str] = Field(default_factory=list)
+    stages_used_percent: float
+    uses_all_stages: bool
+    stages_not_used: list[str] = Field(default_factory=list)
 
 
 class BranchSummary(BaseModel):
@@ -105,7 +121,7 @@ class BranchSummary(BaseModel):
 
 
 class RevisionChainEntry(BaseModel):
-    branch_id: str | None = None
+    branch_id: LegacyBranchID = None
     original_thought_number: int
     replaced_by: list[int]
 
@@ -119,7 +135,7 @@ class TimelineEntry(BaseModel):
     number: int
     stage: str
     is_revision: bool = False
-    branch_id: str | None = None
+    branch_id: LegacyBranchID = None
 
 
 class StageContent(BaseModel):
@@ -133,7 +149,7 @@ class SummaryContent(BaseModel):
     assumptions_challenged: list[str]
     open_branches: list[str]
     revision_chains: list[RevisionChainEntry]
-    gaps: list[str]
+    stage_transitions: list[str]
 
 
 class SummaryStructure(BaseModel):
@@ -162,7 +178,9 @@ class ExportResult(BaseModel):
     session_id: str = "legacy"
     status: str
     message: str
-    thought_count: int
+    record_count: int = Field(
+        description="Notes written: legacy thoughts, or session steps including superseded ones"
+    )
     file_path: str
 
 
@@ -170,7 +188,9 @@ class ImportResult(BaseModel):
     session_id: str = "legacy"
     status: str
     message: str
-    thought_count: int
+    record_count: int = Field(
+        description="Notes read: legacy thoughts, or session steps including superseded ones"
+    )
 
 
 class ClearHistoryResult(BaseModel):

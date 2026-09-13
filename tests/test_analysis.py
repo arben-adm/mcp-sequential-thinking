@@ -132,7 +132,7 @@ class TestThoughtAnalyzer(unittest.TestCase):
     # B2: stage-coverage percentage always derived from len(ThoughtStage)
     # ------------------------------------------------------------------
     def test_percent_complete_denominator_matches_enum(self):
-        """stage_coverage_percent's denominator is len(ThoughtStage) for every
+        """stages_used_percent's denominator is len(ThoughtStage) for every
         count of distinct stages used, 0 through 5."""
         all_stages = list(ThoughtStage)
         self.assertEqual(len(all_stages), 5)
@@ -158,10 +158,10 @@ class TestThoughtAnalyzer(unittest.TestCase):
 
                 completion = summary.structure.completion
                 self.assertEqual(completion.stages_total, 5)
-                self.assertEqual(completion.stages_covered, k)
-                self.assertAlmostEqual(completion.stage_coverage_percent, (k / 5) * 100)
-                self.assertEqual(completion.has_all_stages, k == 5)
-                self.assertEqual(len(completion.skipped_stages), 5 - k)
+                self.assertEqual(completion.stages_used, k)
+                self.assertAlmostEqual(completion.stages_used_percent, (k / 5) * 100)
+                self.assertEqual(completion.uses_all_stages, k == 5)
+                self.assertEqual(len(completion.stages_not_used), 5 - k)
 
     # ------------------------------------------------------------------
     # B3: explicit progress fields instead of one ambiguous scalar

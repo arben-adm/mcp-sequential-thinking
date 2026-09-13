@@ -83,6 +83,43 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+# Legacy records keep the camelCase shape process_thought accepts. Reads expose
+# them under snake_case names, omitting "thought" (already the step's content),
+# "id" (the step id) and "timestamp" (created_at) so a read never ships the same
+# text twice and stays inside its character budget.
+_LEGACY_READ_FIELDS = {
+    "stage": "stage",
+    "tags": "tags",
+    "axiomsUsed": "axioms_used",
+    "assumptionsChallenged": "assumptions_challenged",
+    "thoughtNumber": "thought_number",
+    "totalThoughts": "total_thoughts",
+    "nextThoughtNeeded": "next_thought_needed",
+    "isRevision": "is_revision",
+    "revisesThoughtNumber": "revises_thought_number",
+    "branchFromThought": "branch_from_thought",
+}
+
+
+def _legacy_metadata(stored: str | None) -> dict[str, Any] | None:
+    """Surface stage, tags and legacy numbering a read would otherwise drop.
+
+    Stage and tags are recorded by process_thought but have no column of their
+    own, so a reader following the deprecation notice to read_session used to
+    lose them even though generate_summary still reported them. Empty values are
+    left out: the key appears only when the legacy record actually carries it.
+    """
+    if stored is None:
+        return None
+    record: dict[str, Any] = json.loads(stored)
+    metadata = {
+        name: record[key]
+        for key, name in _LEGACY_READ_FIELDS.items()
+        if record.get(key) not in (None, [], "")
+    }
+    return metadata or None
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -526,12 +563,26 @@ class SessionRepository:
                 "?",
                 (session_id, cursor, kind, kind, step_id, step_id, int(active_only), limit + 1),
             ).fetchall()
+            # An origin is validated as immutable on write but had no read path, so
+            # a caller could not tell where a branch left the mainline. Only named
+            # branches are listed: the mainline has no origin, so the common
+            # single-branch session adds nothing to the response.
+            branches = [
+                {"branch_id": row["id"], "branch_from_step_id": row["origin_id"]}
+                for row in connection.execute(
+                    "SELECT id,origin_id FROM branches WHERE session_id=? AND origin_id IS NOT "
+                    "NULL ORDER BY id",
+                    (session_id,),
+                ).fetchall()
+            ]
             result: dict[str, Any] = {
                 "session_id": session_id,
                 "title": session["title"],
                 "status": session["status"],
                 "version": session["version"],
+                "view": "steps",
                 "steps": [],
+                "branches": branches,
                 "sequence_scope": "database_cursor; use branch_id + position for note numbering",
                 "completion": None,
                 "completion_available": session["completion"] is not None,
@@ -552,7 +603,9 @@ class SessionRepository:
                     result["truncated"] = True
             for row in rows[:limit]:
                 item = dict(row)
-                item.pop("legacy")
+                legacy_metadata = _legacy_metadata(item.pop("legacy"))
+                if legacy_metadata is not None:
+                    item["legacy_metadata"] = legacy_metadata
                 item["sources"] = json.loads(item["sources"])
                 item["superseded"] = bool(item["superseded"])
                 if content_offset is not None:
@@ -776,6 +829,11 @@ class SessionRepository:
                     "supersedes_id": row["supersedes_id"],
                     "created_at": row["created_at"],
                 }
+                # Same key as the steps view: this is the default view, so dropping
+                # it here would still lose a legacy note's stage and tags.
+                legacy_metadata = _legacy_metadata(row["legacy"])
+                if legacy_metadata is not None:
+                    item["legacy_metadata"] = legacy_metadata
                 result["steps"].append(item)
                 if len(json.dumps(result, ensure_ascii=False)) > max_chars - 50:
                     result["steps"].pop()

@@ -346,3 +346,256 @@ def test_sequence_is_a_cursor_and_position_is_branch_local(tmp_path):
     assert page["steps"][0]["position"] == second["position"] == 1
     assert page["steps"][0]["sequence"] == 2
     assert "database_cursor" in page["sequence_scope"]
+
+
+def test_specific_hints_reach_the_client(tmp_path):
+    """Each raise site's own hint must survive sanitization, not a per-code blanket."""
+    repo = SessionRepository(str(tmp_path))
+    try:
+        created = repo.create_session("hints", "c1")
+        sid = created["session_id"]
+        first = repo.add_step(sid, StepInput(content="origin"), "a1")
+        second = repo.add_step(sid, StepInput(content="other"), "a2")
+        repo.add_step(
+            sid,
+            StepInput(
+                content="branched",
+                branch_id="alt",
+                branch_from_step_id=first["step_id"],
+            ),
+            "a3",
+        )
+        cases = [
+            (
+                StepInput(
+                    content="moved origin",
+                    branch_id="alt",
+                    branch_from_step_id=second["step_id"],
+                ),
+                "A branch's origin cannot change",
+            ),
+            (
+                StepInput(content="orphan", parent_step_id=uuid4()),
+                "Reference an existing step in this session",
+            ),
+            (
+                StepInput(content="new branch", branch_id="nope"),
+                "A new branch requires branch_from_step_id",
+            ),
+        ]
+        hints = set()
+        for index, (step, expected) in enumerate(cases):
+            with pytest.raises(SessionError) as raised:
+                repo.add_step(sid, step, f"reject-{index}")
+            assert raised.value.code == "INVALID_REFERENCE"
+            assert raised.value.hint == expected
+            hints.add(raised.value.hint)
+        # The defect was one blanket hint standing in for all of them.
+        assert len(hints) == 3
+    finally:
+        repo.close()
+
+
+async def test_mcp_surfaces_specific_hint_not_blanket(tmp_path, monkeypatch):
+    from mcp_sequential_thinking import server
+
+    repo = SessionRepository(str(tmp_path))
+    monkeypatch.setattr(server, "sessions", repo)
+    try:
+        sid = repo.create_session("hints", "c1")["session_id"]
+        repo.add_step(sid, StepInput(content="only"), "a1")
+        async with Client(server.mcp, raise_exceptions=False) as client:
+            orphan = await client.call_tool(
+                "add_step",
+                {
+                    "session_id": sid,
+                    "content": "orphan",
+                    "request_id": "r1",
+                    "parent_step_id": str(uuid4()),
+                },
+            )
+            assert orphan.is_error
+            text = orphan.content[0].text
+            assert text.startswith("INVALID_REFERENCE:")
+            assert "Reference an existing step in this session" in text
+            # No branch was involved, so the blanket hint must not appear.
+            assert "preserve the branch origin" not in text
+            exported = await client.call_tool(
+                "export_session", {"session_id": sid, "file_path": "hints.json"}
+            )
+            assert not exported.is_error
+            clash = await client.call_tool(
+                "import_session", {"session_id": sid, "file_path": "hints.json"}
+            )
+            assert clash.is_error
+            clash_text = clash.content[0].text
+            assert clash_text.startswith("CONFLICT:")
+            assert "Import into a store without this session" in clash_text
+            # import_session has no version or position parameter to correct.
+            assert "retry with corrected input" not in clash_text
+    finally:
+        repo.close()
+
+
+@pytest.mark.parametrize("view", [None, "steps"])
+async def test_legacy_stage_and_tags_survive_read_session(tmp_path, monkeypatch, view):
+    """Following the deprecation notice to read_session must not lose legacy fields."""
+    from mcp_sequential_thinking import server
+    from mcp_sequential_thinking.legacy import LegacyAdapter
+
+    repo = SessionRepository(str(tmp_path))
+    monkeypatch.setattr(server, "sessions", repo)
+    monkeypatch.setattr(server, "storage", LegacyAdapter(repo))
+    try:
+        async with Client(server.mcp, raise_exceptions=False) as client:
+            written = await client.call_tool(
+                "process_thought",
+                {
+                    "thought": "legacy note with metadata",
+                    "thought_number": 1,
+                    "total_thoughts": 2,
+                    "stage": "Analysis",
+                    "next_thought_needed": True,
+                    "tags": ["alpha", "beta"],
+                    "axioms_used": ["axiom one"],
+                    "assumptions_challenged": ["assumption one"],
+                },
+            )
+            assert not written.is_error
+            arguments = {"session_id": "legacy"}
+            if view is not None:
+                arguments["view"] = view
+            read = await client.call_tool("read_session", arguments)
+            assert not read.is_error
+            page = read.structured_content
+            assert len(page["steps"]) == 1
+            metadata = page["steps"][0]["legacy_metadata"]
+            assert metadata["stage"] == "Analysis"
+            assert metadata["tags"] == ["alpha", "beta"]
+            assert metadata["axioms_used"] == ["axiom one"]
+            assert metadata["assumptions_challenged"] == ["assumption one"]
+            assert metadata["thought_number"] == 1
+            assert metadata["total_thoughts"] == 2
+            # The stored record repeats the text under "thought"; a read must not.
+            assert "thought" not in metadata
+            assert json.dumps(page).count("legacy note with metadata") == 1
+    finally:
+        repo.close()
+
+
+def test_session_steps_carry_no_legacy_metadata_key(tmp_path):
+    """Native steps have no legacy record, so the key stays absent rather than null."""
+    repo = SessionRepository(str(tmp_path))
+    try:
+        sid = repo.create_session("native", "c1")["session_id"]
+        repo.add_step(sid, StepInput(content="native note"), "a1")
+        page = repo.read_session(sid)
+        assert "legacy_metadata" not in page["steps"][0]
+        assert page["view"] == "steps"
+    finally:
+        repo.close()
+
+
+async def test_view_routing_is_explicit(tmp_path, monkeypatch):
+    """A filter must not silently swap the response shape under view='resume'."""
+    from mcp_sequential_thinking import server
+
+    repo = SessionRepository(str(tmp_path))
+    monkeypatch.setattr(server, "sessions", repo)
+    try:
+        sid = repo.create_session("routing", "c1")["session_id"]
+        repo.add_step(sid, StepInput(content="a decision", kind="decision"), "a1")
+        async with Client(server.mcp, raise_exceptions=False) as client:
+            clash = await client.call_tool(
+                "read_session", {"session_id": sid, "view": "resume", "kind": "decision"}
+            )
+            assert clash.is_error
+            assert clash.content[0].text.startswith("INVALID_INPUT:")
+            assert "pass view='steps'" in clash.content[0].text
+            resume = await client.call_tool("read_session", {"session_id": sid})
+            assert not resume.is_error
+            assert resume.structured_content["view"] == "resume"
+            assert "goal" in resume.structured_content
+            # Omitting view with a filter answers in the steps shape, and says so.
+            filtered = await client.call_tool(
+                "read_session", {"session_id": sid, "kind": "decision"}
+            )
+            assert not filtered.is_error
+            assert filtered.structured_content["view"] == "steps"
+            assert "title" in filtered.structured_content
+            explicit = await client.call_tool("read_session", {"session_id": sid, "view": "steps"})
+            assert not explicit.is_error
+            assert explicit.structured_content["view"] == "steps"
+    finally:
+        repo.close()
+
+
+def test_branch_origin_is_readable(tmp_path):
+    """An immutable origin that no read returns cannot be reconstructed by a caller."""
+    repo = SessionRepository(str(tmp_path))
+    try:
+        sid = repo.create_session("branching", "c1")["session_id"]
+        origin = repo.add_step(sid, StepInput(content="mainline"), "a1")
+        repo.add_step(
+            sid,
+            StepInput(content="branched", branch_id="alt", branch_from_step_id=origin["step_id"]),
+            "a2",
+        )
+        page = repo.read_session(sid)
+        assert page["branches"] == [{"branch_id": "alt", "branch_from_step_id": origin["step_id"]}]
+        # The mainline has no origin, so a single-branch session stays empty.
+        plain = repo.create_session("flat", "c2")["session_id"]
+        repo.add_step(plain, StepInput(content="only"), "a3")
+        assert repo.read_session(plain)["branches"] == []
+    finally:
+        repo.close()
+
+
+def test_legacy_mainline_stays_distinct_from_a_branch_named_main():
+    """Normalizing a null mainline to "main" would collide with this branch name."""
+    thoughts = [
+        ThoughtData(
+            thought="mainline note",
+            thought_number=1,
+            total_thoughts=2,
+            stage=ThoughtStage.ANALYSIS,
+            next_thought_needed=True,
+        ),
+        ThoughtData(
+            thought="note on a branch the caller named main",
+            thought_number=2,
+            total_thoughts=2,
+            stage=ThoughtStage.ANALYSIS,
+            next_thought_needed=False,
+            branch_id="main",
+            branch_from_thought=1,
+        ),
+    ]
+    summary = ThoughtAnalyzer.generate_summary(thoughts)
+    branches = {branch.branch_id for branch in summary.structure.branches}
+    assert "main" in branches
+    assert thoughts[0].branch_id is None
+
+
+def test_summary_field_names_state_facts_not_targets():
+    """The session mode promises no mandatory stages, so results must not imply one."""
+    thoughts = [
+        ThoughtData(
+            thought="only an analysis",
+            thought_number=1,
+            total_thoughts=1,
+            stage=ThoughtStage.ANALYSIS,
+            next_thought_needed=False,
+        )
+    ]
+    summary = ThoughtAnalyzer.generate_summary(thoughts)
+    completion = summary.structure.completion
+    assert completion.stages_used == 1
+    assert completion.stages_used_percent == 20.0
+    assert completion.uses_all_stages is False
+    assert "Problem Definition" in completion.stages_not_used
+    assert isinstance(summary.content.stage_transitions, list)
+    serialized = summary.model_dump()
+    flattened = json.dumps(serialized)
+    for judgmental in ("gaps", "skipped_stages", "coverage"):
+        assert judgmental not in flattened

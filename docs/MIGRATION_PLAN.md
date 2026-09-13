@@ -155,7 +155,7 @@ One Pydantic model per tool in a new `mcp_sequential_thinking/schemas.py`:
   ambiguous `progress` float with the four explicit fields from B3.
 - `SummaryResult` — adds the `content` section from B5 alongside the
   existing `structure` section (renamed from the flat shape).
-- `ExportResult` / `ImportResult` — `status`, `message`, `thought_count`.
+- `ExportResult` / `ImportResult` — `status`, `message`, `record_count`.
 - `ClearHistoryResult` — `status`, `message`, `cleared_count`.
 
 All existing dict keys are camelCase (hand-rolled via `to_dict`-style

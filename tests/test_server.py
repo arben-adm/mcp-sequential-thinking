@@ -389,11 +389,11 @@ class TestServerTools(unittest.TestCase):
             },
         )
         export_result = self._call("export_session", {"file_path": "roundtrip.json"})
-        self.assertEqual(export_result.structured_content["thought_count"], 1)
+        self.assertEqual(export_result.structured_content["record_count"], 1)
 
         self._call("clear_history", {})
         import_result = self._call("import_session", {"file_path": "roundtrip.json"})
-        self.assertEqual(import_result.structured_content["thought_count"], 1)
+        self.assertEqual(import_result.structured_content["record_count"], 1)
 
     def test_export_path_traversal_raises_mcp_error(self):
         result = self._call("export_session", {"file_path": "../escape.json"})

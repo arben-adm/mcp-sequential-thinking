@@ -406,15 +406,15 @@ class ThoughtAnalyzer:
         ``len(ThoughtStage)``, derived from the enum, never hardcoded."""
         stages_total = len(ThoughtStage)
         covered = {t.stage for t in thoughts}
-        stages_covered = len(covered)
-        percent = (stages_covered / stages_total) * 100 if stages_total else 0.0
+        stages_used = len(covered)
+        percent = (stages_used / stages_total) * 100 if stages_total else 0.0
         skipped = [s.value for s in ThoughtStage if s not in covered]
         return StageCompletion(
-            stages_covered=stages_covered,
+            stages_used=stages_used,
             stages_total=stages_total,
-            stage_coverage_percent=percent,
-            has_all_stages=stages_covered == stages_total,
-            skipped_stages=skipped,
+            stages_used_percent=percent,
+            uses_all_stages=stages_used == stages_total,
+            stages_not_used=skipped,
         )
 
     @staticmethod
@@ -488,18 +488,18 @@ class ThoughtAnalyzer:
             )
         ]
 
-        gaps: list[str] = []
+        stage_transitions: list[str] = []
         for t in mainline_thoughts:
             issue = ThoughtAnalyzer.detect_stage_transition_issue(t, thoughts)
             if issue:
-                gaps.append(issue)
+                stage_transitions.append(issue)
 
         content = SummaryContent(
             stage_content=stage_content,
             assumptions_challenged=assumptions_challenged,
             open_branches=open_branches,
             revision_chains=revision_chains,
-            gaps=gaps,
+            stage_transitions=stage_transitions,
         )
 
         # --- structure section (statistics only) --------------------------

@@ -357,7 +357,7 @@ async def export_session(
             session_id=session_id,
             status="success",
             message=f"Session exported to {file_path}",
-            thought_count=count,
+            record_count=count,
             file_path=file_path,
         )
 
@@ -413,7 +413,7 @@ async def import_session(
             session_id=session_id,
             status="success",
             message=f"Session imported from {file_path}",
-            thought_count=count,
+            record_count=count,
         )
 
 
