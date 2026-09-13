@@ -81,7 +81,7 @@ class LegacyAdapter:
         with self.repository._write() as connection:
             session = self.repository._session(connection, "legacy")
             if session["status"] != "active":
-                raise SessionError("CONFLICT", "Legacy session has been finalized")
+                raise SessionError("SESSION_FINALIZED", "Legacy session has been finalized")
             rows = connection.execute(
                 "SELECT legacy FROM steps WHERE session_id='legacy' ORDER BY rowid"
             ).fetchall()
@@ -162,7 +162,7 @@ class LegacyAdapter:
         with self.repository._write() as connection:
             session = self.repository._session(connection, "legacy")
             if session["status"] != "active":
-                raise SessionError("CONFLICT", "Legacy session has been finalized")
+                raise SessionError("SESSION_FINALIZED", "Legacy session has been finalized")
             count = connection.execute(
                 "SELECT COUNT(*) FROM steps WHERE session_id='legacy'"
             ).fetchone()[0]

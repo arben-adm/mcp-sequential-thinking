@@ -222,3 +222,30 @@ verified by keeping `test_migration_from_v1_json` and
   now fails loudly (SDK-level validation error) instead of silently
   shipping malformed JSON. Treated as a feature, not a risk, but called out
   since it's a behavior change from "always returns whatever dict I built".
+
+
+## 8. Manual Claude MCP audit follow-up (2026-09-08)
+
+The seven reported findings are covered by `tests/test_claude_findings.py`:
+version-safe excerpts; explicit-session archive roundtrip and atomic rejection;
+SESSION_FINALIZED; current_version on MCP conflicts; branch-qualified analysis;
+resume pagination; completion only on the first page unless requested.
+Resume prioritization is intentional and now returned as ordering metadata.
+Legacy calls remain compatible but are deprecated for new workflows. Single-session
+archives exclude retry keys; SQLite snapshots remain the complete restore path.
+The qualitative feedback supports positioning as durable notes and an auditable
+record, not a demonstrated reasoning improvement. It is one manual evaluation,
+not a completed comparative benchmark.
+
+
+## 9. Second manual audit (2026-09-08)
+
+- Add PATH_OUTSIDE_EXPORTS through the MCP error boundary for both archive formats.
+- Expose the legacy deprecation notice in process_thought results without removing tools.
+- Explain progress and sequence semantics in results, preserving compatibility.
+- The quoted German sentences match at Jaccard 0.6 with the existing DE/EN tokenizer;
+  shared tags match independently. Test both SQLite legacy and JSONL paths through MCP.
+  Do not tune the heuristic based on abbreviated inputs; full failing inputs are needed.
+- finalize_session already validates evidence IDs against the same session before
+  writing. MCP tests now explicitly reject invented and cross-session IDs, verify
+  no state change, and show that a corrected retry succeeds.

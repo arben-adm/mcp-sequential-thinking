@@ -70,9 +70,12 @@ class StepInput(BaseModel):
 class SessionError(ValueError):
     """Stable, bounded, content-free business error for MCP tool adapters."""
 
-    def __init__(self, code: str, hint: str):
+    def __init__(self, code: str, hint: str, *, current_version: int | None = None):
         self.code = code
         self.hint = hint
+        self.current_version = current_version
+        if current_version is not None:
+            hint += f" current_version={current_version}"
         super().__init__(f"{code}: {hint}")
 
 
@@ -313,7 +316,7 @@ class SessionRepository:
                 return cached
             session = self._session(connection, session_id)
             if session["status"] != "active":
-                raise SessionError("CONFLICT", "Finalized sessions do not accept new steps")
+                raise SessionError("SESSION_FINALIZED", "Create a new session for further notes")
             parent = str(step.parent_step_id) if step.parent_step_id else None
             supersedes = str(step.supersedes_step_id) if step.supersedes_step_id else None
             origin = str(step.branch_from_step_id) if step.branch_from_step_id else None
@@ -392,9 +395,11 @@ class SessionRepository:
             if cached is not None:
                 return cached
             session = self._session(connection, session_id)
-            if session["version"] != expected_version or session["status"] != "active":
+            if session["status"] != "active":
+                raise SessionError("SESSION_FINALIZED", "Create a new session for further notes")
+            if session["version"] != expected_version:
                 raise SessionError(
-                    "CONFLICT", "Read the current session and use its active version"
+                    "CONFLICT", "Review changes before retrying", current_version=session["version"]
                 )
             for reference in completion.evidence_step_ids:
                 self._reference(connection, session_id, str(reference))
@@ -426,7 +431,9 @@ class SessionRepository:
                 return cached
             session = self._session(connection, session_id)
             if session["version"] != expected_version:
-                raise SessionError("CONFLICT", "Read the current version before deleting")
+                raise SessionError(
+                    "CONFLICT", "Review changes before deleting", current_version=session["version"]
+                )
             count = connection.execute(
                 "SELECT COUNT(*) FROM steps WHERE session_id=?", (session_id,)
             ).fetchone()[0]
@@ -497,6 +504,7 @@ class SessionRepository:
         active_only: bool = False,
         content_offset: int | None = None,
         content_chars: int = 4000,
+        include_completion: bool | None = None,
     ) -> dict[str, Any]:
         if not 1 <= limit <= 100 or not 1000 <= max_chars <= 50000 or cursor < 0:
             raise SessionError(
@@ -524,6 +532,7 @@ class SessionRepository:
                 "status": session["status"],
                 "version": session["version"],
                 "steps": [],
+                "sequence_scope": "database_cursor; use branch_id + position for note numbering",
                 "completion": None,
                 "completion_available": session["completion"] is not None,
                 "cursor": None,
@@ -533,7 +542,9 @@ class SessionRepository:
             }
             if len(json.dumps(result, ensure_ascii=False)) > max_chars - 100:
                 raise SessionError("RESPONSE_LIMIT", "Increase max_chars to read session metadata")
-            if session["completion"] is not None:
+            if session["completion"] is not None and (
+                include_completion is True or (include_completion is None and cursor == 0)
+            ):
                 candidate = json.loads(session["completion"])
                 result["completion"] = candidate
                 if len(json.dumps(result, ensure_ascii=False)) > max_chars // 2:
@@ -702,10 +713,15 @@ class SessionRepository:
                     return {"session_id": "legacy", "mapping": mapping}
 
     def resume_session(
-        self, session_id: str, max_chars: int = 12000, limit: int = 20
+        self,
+        session_id: str,
+        max_chars: int = 12000,
+        limit: int = 20,
+        cursor: int = 0,
+        include_completion: bool | None = None,
     ) -> dict[str, Any]:
         """Extract active decisions/actions and recent notes, never infer conclusions."""
-        if not 1000 <= max_chars <= 50000 or not 1 <= limit <= 100:
+        if not 1000 <= max_chars <= 50000 or not 1 <= limit <= 100 or cursor < 0:
             raise SessionError("INVALID_INPUT", "Use max_chars 1000–50000 and limit 1–100")
         with self._connection() as connection:
             connection.execute("BEGIN")
@@ -714,8 +730,9 @@ class SessionRepository:
                 "SELECT s.* FROM steps s WHERE session_id=? AND NOT EXISTS "
                 "(SELECT 1 FROM steps r WHERE r.session_id=s.session_id AND r.supersedes_id=s.id) "
                 "ORDER BY CASE kind WHEN 'decision' THEN 0 WHEN 'next_action' THEN 1 "
-                "WHEN 'risk' THEN 2 WHEN 'assumption' THEN 2 ELSE 3 END, rowid DESC LIMIT ?",
-                (session_id, limit + 1),
+                "WHEN 'risk' THEN 2 WHEN 'assumption' THEN 2 ELSE 3 END, "
+                "rowid DESC LIMIT ? OFFSET ?",
+                (session_id, limit + 1, cursor),
             ).fetchall()
             result: dict[str, Any] = {
                 "session_id": session_id,
@@ -723,6 +740,8 @@ class SessionRepository:
                 "status": session["status"],
                 "version": session["version"],
                 "view": "resume",
+                "cursor": None,
+                "order": "decision, next_action, risk/assumption, other; newest first within group",
                 "steps": [],
                 "completion": None,
                 "completion_available": session["completion"] is not None,
@@ -733,7 +752,9 @@ class SessionRepository:
             }
             if len(json.dumps(result, ensure_ascii=False)) > max_chars - 100:
                 raise SessionError("RESPONSE_LIMIT", "Increase max_chars to read session metadata")
-            if session["completion"] is not None:
+            if session["completion"] is not None and (
+                include_completion is True or (include_completion is None and cursor == 0)
+            ):
                 completion = json.loads(session["completion"])
                 excerpt = {
                     key: value[:3] if isinstance(value, list) else value[:500]
@@ -763,5 +784,8 @@ class SessionRepository:
                 if item["content_truncated"]:
                     result["truncated"] = True
             if len(rows) > len(result["steps"]):
+                if not result["steps"]:
+                    raise SessionError("RESPONSE_LIMIT", "Increase max_chars to read a resume step")
+                result["cursor"] = cursor + len(result["steps"])
                 result["truncated"] = True
             return result

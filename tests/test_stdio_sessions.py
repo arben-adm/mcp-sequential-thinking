@@ -99,7 +99,7 @@ async def test_stdio_session_and_legacy_restart(tmp_path):
             },
         )
         assert rejected.is_error
-        assert "CONFLICT:" in rejected.content[0].text
+        assert "SESSION_FINALIZED:" in rejected.content[0].text
         preserved = await client.call_tool("read_session", {"session_id": "legacy"})
         assert len(preserved.structured_content["steps"]) == 1
         chunk = await client.call_tool(

@@ -93,8 +93,16 @@ There is no reopening operation in this version.
 
 Read defaults are 20 entries and 12,000 characters; `limit` and `max_chars` are
 configurable per read (hard limits 100 and 50,000). Results report truncation and
-limits. Full-history cursors refer to the last returned record; follow them with
-`view="steps"`. Resume excerpts are limited to 500 characters per note; use its ID
+limits. The `sequence` field is a database-wide pagination token, not session numbering;
+`sequence_scope` states this in the result. Use `branch_id` plus `position` for
+branch-local numbering. Full-history cursors refer to the last returned record; follow them with
+`view="steps"`. Resume cursors are offsets in its priority ordering; keep
+`view="resume"` when following them. Decisions come first, then next actions,
+risks/assumptions, and other notes; each group is newest first. Resume pages
+include active notes only. Restart pagination if the session changes between pages.
+A null cursor means there are no more notes, even if excerpts are truncated.
+Completion is included on the first page by default; `include_completion=true`
+requests it explicitly and `false` suppresses it. Resume excerpts are limited to 500 characters per note; use its ID
 for the full record. For large legacy notes, pass `step_id`, `content_offset=0`
 and optionally `content_chars` (default 4,000; maximum 10,000). Follow the returned
 `next_content_offset` until null; offsets count Unicode characters, not bytes.
@@ -104,14 +112,21 @@ JSON-RPC frame sizes. List responses and legacy summaries are also bounded.
 
 Errors use `isError=true` on the wire (`is_error` in the Python SDK), stable codes
 such as `INVALID_INPUT`, `UNKNOWN_SESSION`, `INVALID_REFERENCE`, `CONFLICT`,
-`IDEMPOTENCY_CONFLICT`, `STORAGE_BUSY`, and a bounded correction hint. Protocol
-errors remain distinct. Client annotations describe effects; they are not an
+`SESSION_FINALIZED`, `PATH_OUTSIDE_EXPORTS`, `IDEMPOTENCY_CONFLICT`, `STORAGE_BUSY`, and a bounded correction hint. Protocol
+errors remain distinct. Version conflicts include `current_version=<integer>`;
+review concurrent changes before retrying. `SESSION_FINALIZED` requires a new
+session, not a retry with a newer version. `PATH_OUTSIDE_EXPORTS` explicitly
+identifies an export/import path escaping the permitted directory, without
+returning filesystem paths. Completion evidence IDs must exist in the same
+session; missing or foreign IDs produce `INVALID_REFERENCE` without finalizing. Client annotations describe effects; they are not an
 access-control or confirmation mechanism.
 
-## Existing five tools
+## Legacy compatibility (deprecated in 0.7.0)
 
 `process_thought`, `generate_summary`, `clear_history`, `export_session` and
-`import_session` remain available and share the reserved **local `legacy` session**.
+`import_session` without an explicit session ID remain available on the reserved
+**local `legacy` session**. This compatibility path is deprecated; removal is not
+scheduled in this release.
 They do not separate parallel tasks or users. Create explicit sessions for new tasks.
 New `add_step`/`delete_session` calls refuse `legacy`; use its original write/clear
 tools. `read_session(session_id="legacy")` can read it.
@@ -125,12 +140,19 @@ line; forks resolve on the mainline, with an immutable origin. New UUID-based
 branch revisions belong to the new session API.
 
 Results use the existing 0.7-development snake_case structured output:
-`current_thought`, `analysis`, `context`, `warnings`. Related thoughts are a lexical
-heuristic; `same_category_thoughts` groups by shared tags, not merely equal stage.
+`current_thought`, `analysis`, `context`, `warnings`, plus an explicit
+`deprecation_notice` directing new work to the session API. `main_line_progress`
+counts only non-revision mainline notes against caller-supplied `total_thoughts`;
+`main_line_progress_basis` explains that this is not task completion. Three notes
+including one revision can therefore mean 66.7%, with `total_thoughts_recorded=3`.
+Related thoughts use a DE/EN stopword-filtered token-set Jaccard heuristic
+(threshold 0.2, at most three matches), with no stemming or semantic guarantee; `same_category_thoughts` groups by shared tags, not merely equal stage.
 `generate_summary` contains `has_thoughts`, `content`, `structure`, plus
 `total_recorded`, `truncated`, `max_chars` and a `read_session` pointer for full
 history. Its aggregate counters describe the history even when excerpts are cut.
-No structural score should be read as reasoning quality.
+No structural score should be read as reasoning quality. Analysis matches include
+`step_id` and `branch_id`; revision chains include `branch_id`, so numbers are
+resolved within their branch. Technical version numbers remain intact in excerpts.
 
 Legacy import **replaces** the legacy history: `{"thoughts":[]}` is a valid empty
 replacement; wrong containers, duplicate IDs/positions and invalid references are
@@ -138,6 +160,22 @@ errors. v1/v2 JSON exports remain v1/v2; no multi-session data is disguised as t
 format. Import/export paths are confined to `MCP_STORAGE_DIR/exports`, with limits
 of 16 MiB and 10,000 records. Full multi-session snapshots use the separate SQLite
 backup/restore command below.
+
+## Export and import explicit sessions
+
+Use `export_session(file_path="decision.json", session_id="<session UUID>")`
+and `import_session(file_path="decision.json", session_id="<same session UUID>")`.
+The `worklog-session` version 1 JSON archive preserves the title, status, version,
+step IDs, insertion order, branch origins, supersession, sources and completion.
+Import validates the complete graph before committing and rejects an existing
+session ID or conflicting step IDs; it never replaces an explicit session.
+The supplied session ID must match the archive. Paths and file limits are the
+same as for legacy exports, and both formats are disabled in ephemeral mode.
+
+Archives contain caller-supplied data, not trusted instructions. Retry keys are
+excluded: use SQLite snapshots for a complete backup including retry behavior.
+The server's value is durable working notes, auditability and later resumption;
+recording more notes is not evidence of better reasoning.
 
 ## Storage, privacy and operation
 

@@ -22,6 +22,10 @@ from .storage_utils import (
 logger = configure_logging("sequential-thinking.storage")
 
 
+class PathOutsideExportsError(ValueError):
+    """Caller-selected import/export path escapes the permitted directory."""
+
+
 class DuplicateThoughtNumberError(ValueError):
     """Raised by :meth:`ThoughtStorage.add_thought` when ``thought_number``
     collides with an existing thought on the same line (B1)."""
@@ -152,7 +156,7 @@ class ThoughtStorage:
             # Log the full resolved base server-side, but keep it out of the
             # client-facing message (it would leak the user's home directory).
             logger.error(f"Rejected path '{candidate}': resolves outside '{base_r}'")
-            raise ValueError(
+            raise PathOutsideExportsError(
                 f"Path '{candidate}' resolves outside the allowed export directory. "
                 "Export/import paths must stay within the storage area."
             ) from None

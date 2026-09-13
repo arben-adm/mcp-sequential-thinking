@@ -43,7 +43,7 @@ def test_session_uuid_revision_restart_and_finalization(tmp_path):
     final = repository.finalize_session(session_id, completion, 2, "final")
     assert final["version"] == 3
     assert repository.finalize_session(session_id, completion, 2, "final") == final
-    with pytest.raises(SessionError, match="CONFLICT"):
+    with pytest.raises(SessionError, match="SESSION_FINALIZED"):
         repository.add_step(session_id, StepInput(content="new"), "three")
     assert repository.read_session(session_id)["completion"]["outcome"] == "Inspect client"
 
@@ -451,7 +451,7 @@ def test_finalize_race_includes_write_or_rejects_version(tmp_path):
         first, second = pool.submit(write), pool.submit(finalize)
         outcomes = [first.result(), second.result()]
     assert sum(isinstance(result, dict) for result in outcomes) == 1
-    assert "CONFLICT" in outcomes
+    assert any(code in outcomes for code in ("CONFLICT", "SESSION_FINALIZED"))
     assert repository.read_session(session_id)["version"] == 1
 
 

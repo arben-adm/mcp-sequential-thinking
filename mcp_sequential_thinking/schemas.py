@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 class RevisionOf(BaseModel):
     """A snippet of the mainline thought a revision replaces."""
 
+    step_id: str = ""
+    branch_id: str | None = None
     thought_number: int
     stage: str
     snippet: str
@@ -22,6 +24,8 @@ class RevisionOf(BaseModel):
 class RelatedThought(BaseModel):
     """A lexically similar thought, possibly in a different stage."""
 
+    step_id: str = ""
+    branch_id: str | None = None
     number: int
     score: float
     reason: str
@@ -31,6 +35,8 @@ class SameCategoryThought(BaseModel):
     """A thought sharing a stage or tag with the current one (categorical,
     not necessarily content-related — see docs/MIGRATION_PLAN.md B4)."""
 
+    step_id: str = ""
+    branch_id: str | None = None
     number: int
     reason: str
 
@@ -49,7 +55,13 @@ class CurrentThought(BaseModel):
 class ThoughtAnalysis(BaseModel):
     related_thoughts: list[RelatedThought] = Field(default_factory=list)
     same_category_thoughts: list[SameCategoryThought] = Field(default_factory=list)
-    main_line_progress: float
+    main_line_progress: float = Field(
+        description="Recorded non-revision mainline notes / caller total_thoughts * 100; "
+        "excludes branches and revisions, and does not measure task completion."
+    )
+    main_line_progress_basis: str = (
+        "non_revision_mainline_notes / caller_total_thoughts; not task completion"
+    )
     main_line_position: int
     total_thoughts_recorded: int
     branch_count: int
@@ -67,6 +79,10 @@ class ThoughtContext(BaseModel):
 
 
 class ProcessThoughtResult(BaseModel):
+    deprecation_notice: str = (
+        "Legacy workflow deprecated in 0.7.0; use create_session/add_step/read_session "
+        "for new tasks. Existing legacy notes remain available; no removal in 0.7.0."
+    )
     current_thought: CurrentThought
     analysis: ThoughtAnalysis
     context: ThoughtContext
@@ -89,6 +105,7 @@ class BranchSummary(BaseModel):
 
 
 class RevisionChainEntry(BaseModel):
+    branch_id: str | None = None
     original_thought_number: int
     replaced_by: list[int]
 
@@ -142,6 +159,7 @@ class SummaryResult(BaseModel):
 
 
 class ExportResult(BaseModel):
+    session_id: str = "legacy"
     status: str
     message: str
     thought_count: int
@@ -149,6 +167,7 @@ class ExportResult(BaseModel):
 
 
 class ImportResult(BaseModel):
+    session_id: str = "legacy"
     status: str
     message: str
     thought_count: int

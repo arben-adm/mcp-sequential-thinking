@@ -398,7 +398,7 @@ class TestServerTools(unittest.TestCase):
     def test_export_path_traversal_raises_mcp_error(self):
         result = self._call("export_session", {"file_path": "../escape.json"})
         self.assertTrue(result.is_error)
-        self.assertIn("INVALID_INPUT", result.content[0].text)
+        self.assertIn("PATH_OUTSIDE_EXPORTS", result.content[0].text)
 
     def test_import_missing_file_is_tool_error_not_mcp_error(self):
         """A missing import file is an execution-time condition (the model

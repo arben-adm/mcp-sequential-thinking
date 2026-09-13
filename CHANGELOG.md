@@ -2,6 +2,31 @@
 
 ## [0.7.0] — Unreleased development candidate
 
+### Second manual MCP audit follow-up (2026-09-08)
+
+- Return `PATH_OUTSIDE_EXPORTS` for rejected import/export paths with a useful,
+  sanitized correction hint.
+- Include migration guidance in `process_thought.deprecation_notice`, and explain
+  the basis of mainline progress and the database-wide sequence cursor in results.
+- Add MCP regression coverage for the quoted German lexical overlap (score 0.6),
+  tag matching, and atomic rejection of nonexistent/cross-session completion evidence.
+  Evidence validation already existed; the reported bypass was not reproduced.
+  Empty related matches for the full manual inputs remain unverified without those inputs.
+
+### Manual MCP audit follow-up (2026-09-08)
+
+- Preserve decimal/version numbers in summary excerpts.
+- Add explicit `session_id` export/import with a validated, atomic single-session
+  archive preserving branches, IDs, sources and completion. Existing sessions
+  conflict on import; legacy v1/v2 behavior stays available.
+- Distinguish `SESSION_FINALIZED` from retryable version conflicts and expose
+  `current_version` through sanitized MCP errors.
+- Qualify legacy analysis references and revision chains by branch.
+- Paginate the prioritized resume view without repeating page zero; document its
+  ordering and omit completion from later pages unless explicitly requested.
+- Deprecate the legacy workflow without removing it; emphasize working notes,
+  auditability and resumption rather than improved reasoning.
+
 ### Reliability upgrade (2026-09-05)
 
 - Serialize JSONL recovery and mutations; repair incomplete UTF-8/JSON tails with
@@ -60,7 +85,7 @@ session semantics. See the README for details.
   (per-stage thought excerpts, aggregated `assumptions_challenged`,
   `open_branches`, `revision_chains`) sits alongside the old counters,
   now under `structure`. `completionStatus.percentComplete` is replaced
-  by `structure.completion.stage_coverage_percent`, whose denominator is
+  by `structure.completion.stages_used_percent`, whose denominator is
   always `len(ThoughtStage)` (5), never hardcoded.
 - **Export/import path errors, invalid stage names, and duplicate
   `thought_number`** now fail the tool call as a protocol-level error
