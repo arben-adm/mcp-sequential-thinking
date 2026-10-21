@@ -76,7 +76,9 @@ async def test_stdio_session_and_legacy_restart(tmp_path):
             },
         )
         assert retry.structured_content["step_id"] == step_id
-        assert not (await client.call_tool("generate_summary", {})).is_error
+        summary = await client.call_tool("generate_summary", {})
+        assert not summary.is_error
+        assert summary.structured_content["deprecation_notice"]
         read_legacy = await client.call_tool("read_session", {"session_id": "legacy"})
         assert read_legacy.structured_content["steps"][0]["content"] == "legacy note"
         finalized = await client.call_tool(
@@ -193,6 +195,8 @@ async def test_schema_case_compatibility_error_redaction_and_summary_budget(tmp_
         )
         assert "Analysis" in json.dumps(process_schema)
         assert process_schema["properties"]["thought"]["maxLength"] == 100000
+        # Lowercase stage must pass the advertised schema (strict clients validate it).
+        assert "enum" not in json.dumps(process_schema["properties"]["stage"])
         for number in range(30):
             result = await client.call_tool(
                 "process_thought",
@@ -218,4 +222,5 @@ async def test_schema_case_compatibility_error_redaction_and_summary_budget(tmp_
         assert not summary.is_error
         assert summary.structured_content["truncated"]
         assert summary.structured_content["total_recorded"] == 30
+        assert summary.structured_content["deprecation_notice"]
         assert len(json.dumps(summary.structured_content, ensure_ascii=False)) <= 1500

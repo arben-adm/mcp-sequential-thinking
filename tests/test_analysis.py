@@ -311,6 +311,29 @@ class TestThoughtAnalyzer(unittest.TestCase):
         )
         self.assertIsNone(ThoughtAnalyzer.detect_stage_transition_issue(revision, [prev, revision]))
 
+    def test_detect_stage_transition_issue_counts_prior_revision(self):
+        stages = [
+            ThoughtStage.PROBLEM_DEFINITION,
+            ThoughtStage.RESEARCH,
+            ThoughtStage.ANALYSIS,
+            ThoughtStage.CONCLUSION,
+        ]
+        thoughts = [
+            ThoughtData(
+                thought=f"step {n}",
+                thought_number=n,
+                total_thoughts=4,
+                next_thought_needed=n < 4,
+                stage=stage,
+                is_revision=n == 3,
+                revises_thought_number=2 if n == 3 else None,
+            )
+            for n, stage in enumerate(stages, start=1)
+        ]
+        issue = ThoughtAnalyzer.detect_stage_transition_issue(thoughts[3], thoughts)
+        self.assertIsNotNone(issue)
+        self.assertIn("skipped Synthesis going from 'Analysis'", issue)
+
     def test_detect_stage_transition_issue_first_thought_is_none(self):
         first = ThoughtData(
             thought="Starting straight in synthesis, no prior thoughts",

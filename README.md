@@ -141,7 +141,10 @@ branch revisions belong to the new session API.
 
 Results use the existing 0.7-development snake_case structured output:
 `current_thought`, `analysis`, `context`, `warnings`, plus an explicit
-`deprecation_notice` directing new work to the session API. `main_line_progress`
+`deprecation_notice` directing new work to the session API; `generate_summary`,
+`clear_history` and legacy-session export/import results carry the same notice.
+Stage order warnings compare with the previous mainline or revision note, so a
+stage reached in a revision does not count as skipped. `main_line_progress`
 counts only non-revision mainline notes against caller-supplied `total_thoughts`;
 `main_line_progress_basis` explains that this is not task completion. Three notes
 including one revision can therefore mean 66.7%, with `total_thoughts_recorded=3`.

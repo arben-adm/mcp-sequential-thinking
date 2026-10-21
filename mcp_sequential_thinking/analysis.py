@@ -364,9 +364,11 @@ class ThoughtAnalyzer:
         thought: ThoughtData, all_thoughts: list[ThoughtData]
     ) -> str | None:
         """Detect a stage skip or regression relative to the previous
-        mainline thought (B6). Returns ``None`` for the first mainline
-        thought, a sequential step, a repeated stage, or any
+        mainline-or-revision thought (B6). Returns ``None`` for the first
+        mainline thought, a sequential step, a repeated stage, or any
         revision/branch thought (those legitimately explore out of order).
+        Earlier revisions still count as the predecessor: a stage reached
+        in a revision was not skipped.
         """
         if not ThoughtAnalyzer._is_mainline(thought):
             return None
@@ -374,7 +376,7 @@ class ThoughtAnalyzer:
         prior_mainline = [
             t
             for t in all_thoughts
-            if ThoughtAnalyzer._is_mainline(t)
+            if t.branch_id is None
             and t.id != thought.id
             and t.thought_number < thought.thought_number
         ]

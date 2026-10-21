@@ -94,11 +94,14 @@ class ThoughtContext(BaseModel):
     current_stage: str
 
 
+LEGACY_NOTICE = (
+    "Legacy workflow deprecated in 0.7.0; use create_session/add_step/read_session "
+    "for new tasks. Existing legacy notes remain available; no removal in 0.7.0."
+)
+
+
 class ProcessThoughtResult(BaseModel):
-    deprecation_notice: str = (
-        "Legacy workflow deprecated in 0.7.0; use create_session/add_step/read_session "
-        "for new tasks. Existing legacy notes remain available; no removal in 0.7.0."
-    )
+    deprecation_notice: str = LEGACY_NOTICE
     current_thought: CurrentThought
     analysis: ThoughtAnalysis
     context: ThoughtContext
@@ -163,6 +166,7 @@ class SummaryStructure(BaseModel):
 
 
 class SummaryResult(BaseModel):
+    deprecation_notice: str = LEGACY_NOTICE
     total_recorded: int = 0
     truncated: bool = False
     max_chars: int = 12000
@@ -175,6 +179,8 @@ class SummaryResult(BaseModel):
 
 
 class ExportResult(BaseModel):
+    # Set only for the legacy session; explicit sessions are not deprecated.
+    deprecation_notice: str | None = None
     session_id: str = "legacy"
     status: str
     message: str
@@ -185,6 +191,8 @@ class ExportResult(BaseModel):
 
 
 class ImportResult(BaseModel):
+    # Set only for the legacy session; explicit sessions are not deprecated.
+    deprecation_notice: str | None = None
     session_id: str = "legacy"
     status: str
     message: str
@@ -194,6 +202,7 @@ class ImportResult(BaseModel):
 
 
 class ClearHistoryResult(BaseModel):
+    deprecation_notice: str = LEGACY_NOTICE
     status: str
     message: str
     cleared_count: int

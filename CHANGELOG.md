@@ -2,6 +2,17 @@
 
 ## [0.7.0] — Unreleased development candidate
 
+### Claude Desktop test follow-up (2026-10-21)
+
+- Declare the `process_thought` `stage` parameter as a string listing the five
+  stages, so strict clients accept the documented case-insensitive spelling
+  (`"research"`); unknown stages still return `INVALID_INPUT`.
+- Stage-jump warnings in `process_thought` and `generate_summary.stage_transitions`
+  compare with the previous mainline **or revision** note; a stage reached in a
+  revision is no longer reported as skipped.
+- Add `deprecation_notice` to `generate_summary`, `clear_history` and legacy-session
+  `export_session`/`import_session` results (null for explicit sessions).
+
 ### Cleanup (2026-10-21)
 
 - Remove `run_server.py`; use `mcp-sequential-thinking` or

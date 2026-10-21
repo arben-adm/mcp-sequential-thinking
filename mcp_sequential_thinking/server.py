@@ -24,6 +24,7 @@ from .logging_conf import configure_logging, log_duration
 from .models import ThoughtStage
 from .protocol import WorkingNotesServer
 from .schemas import (
+    LEGACY_NOTICE,
     ClearHistoryResult,
     ExportResult,
     ImportResult,
@@ -113,7 +114,12 @@ async def process_thought(
     ],
     next_thought_needed: bool,
     stage: Annotated[
-        ThoughtStage, Field(description="Legacy stage; case-insensitive spelling remains accepted")
+        # str, not ThoughtStage: an enum schema makes strict clients reject "research".
+        str,
+        Field(
+            description="Legacy stage, case-insensitive: Problem Definition, Research, "
+            "Analysis, Synthesis, Conclusion"
+        ),
     ],
     thought_number: Annotated[int, Field(ge=1, le=1000000000)] | None = None,
     tags: Annotated[list[Annotated[str, Field(max_length=100)]], Field(max_length=20)]
@@ -193,7 +199,7 @@ async def process_thought(
     op_name = f"process_thought #{thought_number if thought_number is not None else '(auto)'}"
     with log_duration(logger, op_name):
         try:
-            thought_stage = stage
+            thought_stage = ThoughtStage(stage)
             thought_data, all_thoughts, warnings = await _call_storage(
                 _get_storage().record_thought,
                 strict_stages=strict_stages,
@@ -335,6 +341,7 @@ async def export_session(
             raise ToolError("STORAGE_ERROR: could not export session") from e
 
         return ExportResult(
+            deprecation_notice=LEGACY_NOTICE if session_id == "legacy" else None,
             session_id=session_id,
             status="success",
             message=f"Session exported to {file_path}",
@@ -391,6 +398,7 @@ async def import_session(
             raise ToolError("STORAGE_ERROR: could not import session") from e
 
         return ImportResult(
+            deprecation_notice=LEGACY_NOTICE if session_id == "legacy" else None,
             session_id=session_id,
             status="success",
             message=f"Session imported from {file_path}",
