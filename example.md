@@ -254,7 +254,7 @@ else:
 
 ## 7. Web UI Integration
 
-Create a simple web UI for your server:
+Create a simple web UI for your server (install `fastapi` and `uvicorn` yourself):
 
 ```python
 from fastapi import FastAPI, HTTPException
@@ -291,7 +291,7 @@ async def add_thought(request: ThoughtRequest):
     """Add a new thought."""
     try:
         # Convert stage string to enum
-        thought_stage = ThoughtStage.from_string(request.stage)
+        thought_stage = ThoughtStage(request.stage)
 
         # Create thought data
         thought_data = ThoughtData(
@@ -333,7 +333,7 @@ async def get_summary():
 
 ## 8. Visualization Tools
 
-Add visualization capabilities to your server:
+Add visualization capabilities to your server (install `matplotlib` yourself):
 
 ```python
 import matplotlib.pyplot as plt

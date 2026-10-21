@@ -1,6 +1,87 @@
 # Changelog
 
-## [0.7.0] - 2026-08-24
+## [0.7.0] — Unreleased development candidate
+
+### Claude Desktop test follow-up (2026-10-21)
+
+- Declare the `process_thought` `stage` parameter as a string listing the five
+  stages, so strict clients accept the documented case-insensitive spelling
+  (`"research"`); unknown stages still return `INVALID_INPUT`.
+- Stage-jump warnings in `process_thought` and `generate_summary.stage_transitions`
+  compare with the previous mainline **or revision** note; a stage reached in a
+  revision is no longer reported as skipped.
+- Add `deprecation_notice` to `generate_summary`, `clear_history` and legacy-session
+  `export_session`/`import_session` results (null for explicit sessions).
+- Name the involved fields in `INVALID_INPUT` hints for cross-field validation
+  errors (e.g. `Fields: branch_from_thought, branch_id`).
+- `read_session` steps view: a first note larger than `max_chars` degrades to its
+  first content chunk (`content_truncated`, `next_content_offset`) instead of
+  returning `RESPONSE_LIMIT`.
+- Kept by decision: `truncated` stays one flag (`next_cursor` signals more pages),
+  cursors stay opaque per view, and a `create_session` retry returns the original
+  snapshot (use `read_session` for current state).
+
+### Cleanup (2026-10-21)
+
+- Remove `run_server.py`; use `mcp-sequential-thinking` or
+  `python -m mcp_sequential_thinking.server`.
+- Remove `debug_mcp_connection.py`; `scripts/stdio_smoke.py` covers the stdio check
+  with the real MCP client.
+- Remove the unused `utils.to_camel_case` and `ThoughtStage.from_string`;
+  `ThoughtStage(value)` accepts the same case-insensitive spelling.
+- Drop the unused `vis`, `web` and `all` extras (matplotlib, numpy, fastapi, uvicorn).
+- `ThoughtData` serializes through Pydantic camelCase aliases; the stored format and
+  key order are unchanged, unknown keyword arguments are now rejected.
+- Rely on the MCP SDK's UTF-8 stdio wrapping; drop the duplicate re-wrap and the
+  script-mode import fallback in `server.py`.
+
+### Second manual MCP audit follow-up (2026-09-08)
+
+- Return `PATH_OUTSIDE_EXPORTS` for rejected import/export paths with a useful,
+  sanitized correction hint.
+- Include migration guidance in `process_thought.deprecation_notice`, and explain
+  the basis of mainline progress and the database-wide sequence cursor in results.
+- Add MCP regression coverage for the quoted German lexical overlap (score 0.6),
+  tag matching, and atomic rejection of nonexistent/cross-session completion evidence.
+  Evidence validation already existed; the reported bypass was not reproduced.
+  Empty related matches for the full manual inputs remain unverified without those inputs.
+
+### Manual MCP audit follow-up (2026-09-08)
+
+- Preserve decimal/version numbers in summary excerpts.
+- Add explicit `session_id` export/import with a validated, atomic single-session
+  archive preserving branches, IDs, sources and completion. Existing sessions
+  conflict on import; legacy v1/v2 behavior stays available.
+- Distinguish `SESSION_FINALIZED` from retryable version conflicts and expose
+  `current_version` through sanitized MCP errors.
+- Qualify legacy analysis references and revision chains by branch.
+- Paginate the prioritized resume view without repeating page zero; document its
+  ordering and omit completion from later pages unless explicitly requested.
+- Deprecate the legacy workflow without removing it; emphasize working notes,
+  auditability and resumption rather than improved reasoning.
+
+### Reliability upgrade (2026-09-05)
+
+- Serialize JSONL recovery and mutations; repair incomplete UTF-8/JSON tails with
+  exact backups; reject complete corruption, future schemas and identity conflicts.
+- Add transactional SQLite sessions, ID references, request-ID retries, versioned
+  finalization, bounded resume/full reads and explicit typed completion records.
+- Migrate legacy UUIDs and contents without deduplication; keep the five tools on
+  the explicit legacy session, with guarded old-writer exclusion and snapshot restore.
+- Add memory-only operation, controlled diagnostics, schema limits and sanitized
+  correctable tool errors. Legacy stage spelling remains case insensitive.
+- Extend process/crash/fault/stdio tests and complete Python/Windows/SDK gates;
+  test installed artifacts outside the checkout and publish the same tested files.
+- Prepare a bilingual evaluation collection and registry metadata. A completed
+  model usefulness comparison is still required; no general quality claim is made.
+
+Compatibility changes: corrupt storage fails closed rather than starting empty;
+correctable legacy errors are now isError tool results; inputs/outputs have explicit
+limits; source imports no longer initialize storage. SQLite snapshots are required
+for complete restore after new writes; legacy JSONL alone cannot downgrade all
+session semantics. See the README for details.
+
+### Earlier 0.7 development work (2026-08-24; not a published release)
 
 ### Breaking
 
@@ -37,7 +118,7 @@
   (per-stage thought excerpts, aggregated `assumptions_challenged`,
   `open_branches`, `revision_chains`) sits alongside the old counters,
   now under `structure`. `completionStatus.percentComplete` is replaced
-  by `structure.completion.stage_coverage_percent`, whose denominator is
+  by `structure.completion.stages_used_percent`, whose denominator is
   always `len(ThoughtStage)` (5), never hardcoded.
 - **Export/import path errors, invalid stage names, and duplicate
   `thought_number`** now fail the tool call as a protocol-level error

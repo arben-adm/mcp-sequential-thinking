@@ -1,5 +1,6 @@
 import json
 import os
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -56,13 +57,17 @@ def save_thoughts_to_file(
     if metadata:
         data.update(metadata)
 
+    serialized = json.dumps(data, indent=2, ensure_ascii=False)
+    if len(thoughts) > MAX_IMPORT_RECORDS or len(serialized.encode("utf-8")) > MAX_IMPORT_BYTES:
+        raise ValueError("Export exceeds format limits; use a database backup")
+
     # Ensure destination directories exist before acquiring the lock.
     file_path.parent.mkdir(parents=True, exist_ok=True)
     lock_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Use file locking to ensure thread safety when writing
     with portalocker.Lock(lock_file, timeout=timeout) as _:
-        _atomic_write_text(file_path, json.dumps(data, indent=2, ensure_ascii=False))
+        _atomic_write_text(file_path, serialized)
 
     logger.debug(f"Saved {len(thoughts)} thoughts to {file_path}")
 
@@ -80,7 +85,7 @@ def _atomic_write_text(file_path: Path, text: str) -> None:
         text: Full file content to write.
     """
     tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
+    with open(tmp_path, "w", encoding="utf-8", newline="") as f:
         f.write(text)
         f.flush()
         os.fsync(f.fileno())
@@ -120,8 +125,8 @@ def append_thought_to_jsonl(
     lock_file.parent.mkdir(parents=True, exist_ok=True)
 
     with portalocker.Lock(lock_file, timeout=timeout) as _:
-        is_new_file = not file_path.exists()
-        with open(file_path, "a", encoding="utf-8") as f:
+        is_new_file = not file_path.exists() or file_path.stat().st_size == 0
+        with open(file_path, "a", encoding="utf-8", newline="") as f:
             if is_new_file:
                 f.write(_dump_record(_header_record()) + "\n")
             f.write(_dump_record({"type": "thought", **thought_dict}) + "\n")
@@ -136,6 +141,8 @@ def rewrite_jsonl(
     lock_file: Path,
     thoughts: list[dict[str, Any]],
     timeout: float = 10.0,
+    *,
+    _already_locked: bool = False,
 ) -> None:
     """Atomically rewrite a JSONL session file with the given thoughts.
 
@@ -155,10 +162,67 @@ def rewrite_jsonl(
     file_path.parent.mkdir(parents=True, exist_ok=True)
     lock_file.parent.mkdir(parents=True, exist_ok=True)
 
-    with portalocker.Lock(lock_file, timeout=timeout) as _:
+    with nullcontext() if _already_locked else portalocker.Lock(lock_file, timeout=timeout) as _:
         _atomic_write_text(file_path, "\n".join(lines) + "\n")
 
     logger.debug(f"Rewrote {len(thoughts)} thoughts to {file_path}")
+
+
+class UnsupportedSchemaVersion(ValueError):
+    """The original must remain untouched; use a compatible server or restore."""
+
+
+MAX_IMPORT_BYTES = 16 * 1024 * 1024
+MAX_IMPORT_RECORDS = 10000
+
+
+def validate_thoughts(thoughts: list[ThoughtData]) -> None:
+    """Shared integrity rules. Never deduplicate, renumber, or replace IDs."""
+    ids = set()
+    positions = set()
+    forks: dict[str, int | None] = {}
+    prior: list[ThoughtData] = []
+    for thought in thoughts:
+        if thought.id in ids:
+            raise ValueError("Duplicate thought UUID")
+        position = (thought.branch_id, thought.thought_number)
+        if position in positions:
+            raise ValueError("Duplicate thought position")
+        if thought.branch_id is not None:
+            if (
+                thought.branch_id in forks
+                and forks[thought.branch_id] != thought.branch_from_thought
+            ):
+                raise ValueError("Branch origin cannot change")
+            forks[thought.branch_id] = thought.branch_from_thought
+        for number, branch in [
+            (thought.revises_thought_number, thought.branch_id),
+            (thought.branch_from_thought, None),
+        ]:
+            if number is not None:
+                targets = [t for t in prior if t.thought_number == number and t.branch_id == branch]
+                if len(targets) != 1:
+                    raise ValueError(
+                        "Invalid reference: expected one earlier target in reference scope"
+                    )
+        ids.add(thought.id)
+        positions.add(position)
+        prior.append(thought)
+
+
+def _incomplete_tail(line: bytes, error: UnicodeDecodeError | json.JSONDecodeError) -> bool:
+    """Conservatively distinguish truncation from malformed complete syntax."""
+    if isinstance(error, UnicodeDecodeError):
+        if error.reason != "unexpected end of data" or error.end != len(line):
+            return False
+        line = line[: error.start]
+        try:
+            json.loads(line)
+        except json.JSONDecodeError as prefix_error:
+            return _incomplete_tail(line, prefix_error)
+        return False
+    decoded = line.decode("utf-8")
+    return error.msg.startswith("Unterminated string") or error.pos >= len(decoded.rstrip())
 
 
 def load_thoughts_from_jsonl(
@@ -167,95 +231,71 @@ def load_thoughts_from_jsonl(
     backup_on_corruption: bool = False,
     timeout: float = 10.0,
 ) -> list[ThoughtData]:
-    """Load thoughts from a JSONL session file (schema version 2).
+    """Validate under one lock; repair only an unterminated malformed tail.
 
-    Args:
-        file_path: Path to the JSONL session file.
-        lock_file: Path to the lock file.
-        backup_on_corruption: Recovery behaviour reserved for the server's own
-            session file. When True, a corrupt final line (interrupted append)
-            is dropped with a warning and the valid prefix is kept; any other
-            corruption renames the file to a ``.bak.<timestamp>`` backup and
-            returns an empty list. When False, all errors propagate.
-        timeout: Seconds to wait for the lock before raising
-            ``portalocker.exceptions.BaseLockException`` (B7).
-
-    Returns:
-        List[ThoughtData]: Loaded thought data objects.
-
-    Raises:
-        ValueError: If the file is not a valid version-2 JSONL session file
-            (only when ``backup_on_corruption`` is False). This includes
-            ``json.JSONDecodeError`` and pydantic validation errors, which are
-            ``ValueError`` subclasses.
+    Corruption in complete records and unsupported versions stop startup without
+    changing the source. A repair retains an exact backup of the original bytes.
     """
-    if not file_path.exists():
-        return []
-
-    try:
-        with (
-            portalocker.Lock(lock_file, timeout=timeout) as _,
-            open(file_path, encoding="utf-8") as f,
-        ):
-            raw_lines = f.read().splitlines()
-
-        # Ignore trailing blank lines.
-        while raw_lines and not raw_lines[-1].strip():
-            raw_lines.pop()
-
-        if not raw_lines:
+    with portalocker.Lock(lock_file, timeout=timeout):
+        if not file_path.exists():
             return []
-
-        header = json.loads(raw_lines[0])
+        raw = file_path.read_bytes()
+        if not raw:
+            return []
+        lines = raw.splitlines(keepends=True)
+        header = json.loads(lines[0])
         if not isinstance(header, dict) or header.get("type") != "header":
-            raise ValueError(
-                f"File {file_path} does not start with a header record and is not a "
-                "valid session file."
+            raise ValueError("Invalid session header; restore required")
+        if type(header.get("version")) is not int or header["version"] != SCHEMA_VERSION:
+            raise UnsupportedSchemaVersion(
+                "Unsupported session version; use compatible server or restore"
             )
-        version = header.get("version")
-        if version != SCHEMA_VERSION:
-            raise ValueError(
-                f"Unsupported session schema version {version!r} in {file_path}; this "
-                f"server supports version {SCHEMA_VERSION}. The file may have been "
-                "created by a newer release."
-            )
-
         thoughts: list[ThoughtData] = []
-        last_index = len(raw_lines) - 1
-        for index, line in enumerate(raw_lines[1:], start=1):
+        missing_ids = False
+        offset = len(lines[0])
+        repair_at: int | None = None
+        for index, line in enumerate(lines[1:], start=1):
             if not line.strip():
+                offset += len(line)
                 continue
             try:
                 record = json.loads(line)
-            except json.JSONDecodeError:
-                if backup_on_corruption and index == last_index:
-                    # An interrupted append leaves exactly one truncated final
-                    # line; the prefix is still a consistent session.
-                    logger.warning(
-                        f"Dropping truncated final record in {file_path} (interrupted write)"
-                    )
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                if (
+                    backup_on_corruption
+                    and index == len(lines) - 1
+                    and not line.endswith(b"\n")
+                    and _incomplete_tail(line, error)
+                ):
+                    repair_at = offset
                     break
-                raise
+                raise ValueError("Corrupt complete session record; restore required") from None
             if not isinstance(record, dict) or record.get("type") != "thought":
-                raise ValueError(
-                    f"Unexpected record on line {index + 1} of {file_path}: "
-                    "expected a thought record."
-                )
+                raise ValueError("Invalid session record; restore required")
+            missing_ids = missing_ids or "id" not in record
             thoughts.append(ThoughtData.from_dict(record))
+            offset += len(line)
+        validate_thoughts(thoughts)
+        if repair_at is not None or (missing_ids and backup_on_corruption):
+            from uuid import uuid4
 
-        logger.debug(f"Loaded {len(thoughts)} thoughts from {file_path}")
+            backup = file_path.with_name(file_path.name + ".bak." + str(uuid4()))
+            with backup.open("xb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if missing_ids:
+                repaired = [_dump_record(header)]
+                repaired.extend(
+                    _dump_record({"type": "thought", **t.to_dict(True)}) for t in thoughts
+                )
+                _atomic_write_text(file_path, "\n".join(repaired) + "\n")
+            else:
+                _atomic_write_text(file_path, raw[:repair_at].decode("utf-8"))
+        elif backup_on_corruption and not raw.endswith(b"\n"):
+            # Complete JSON without a final newline must not concatenate with an append.
+            _atomic_write_text(file_path, raw.decode("utf-8") + "\n")
         return thoughts
-
-    except (json.JSONDecodeError, KeyError, ValueError) as e:
-        logger.error(f"Error loading from {file_path}: {e}")
-
-        if not backup_on_corruption:
-            raise
-
-        backup_file = file_path.with_suffix(f".bak.{datetime.now().strftime('%Y%m%d%H%M%S')}")
-        file_path.rename(backup_file)
-        logger.info(f"Created backup of corrupted file at {backup_file}")
-        return []
 
 
 def load_thoughts_from_file(
@@ -263,83 +303,42 @@ def load_thoughts_from_file(
     lock_file: Path,
     backup_on_corruption: bool = False,
     timeout: float = 10.0,
+    *,
+    _already_locked: bool = False,
 ) -> list[ThoughtData]:
-    """Load thoughts from a file with proper locking.
+    """Validate a bounded v1/v2 export completely before any replacement.
 
-    Args:
-        file_path: Path to the file to load
-        lock_file: Path to the lock file
-        backup_on_corruption: Recovery behaviour reserved for the server's own
-            session file. When True, a corrupt or semantically invalid file is
-            renamed to a ``.bak.<timestamp>`` backup and an empty list is
-            returned (the server stays up). When False (the default, used for
-            ``import_session``), any parse/validation error propagates so the
-            caller's input file and current state are left untouched.
-        timeout: Seconds to wait for the lock before raising
-            ``portalocker.exceptions.BaseLockException`` (B7).
-
-    Returns:
-        List[ThoughtData]: Loaded thought data objects
-
-    Raises:
-        json.JSONDecodeError: If the file is not valid JSON (only when
-            ``backup_on_corruption`` is False).
-        KeyError: If the file doesn't contain valid thought data (only when
-            ``backup_on_corruption`` is False).
-        ValueError: If the file contains semantically invalid data, e.g. an
-            unknown stage or a failed model validation (only when
-            ``backup_on_corruption`` is False). Note that ``JSONDecodeError``
-            and ``pydantic.ValidationError`` are both ``ValueError`` subclasses.
+    The legacy backup_on_corruption argument remains accepted, but corrupt
+    originals are never silently replaced with empty writable sessions.
     """
-    if not file_path.exists():
-        return []
-
-    try:
-        # Use file locking and file handling in a single with statement
-        # for cleaner resource management
-        with (
-            portalocker.Lock(lock_file, timeout=timeout) as _,
-            open(file_path, encoding="utf-8") as f,
+    with nullcontext() if _already_locked else portalocker.Lock(lock_file, timeout=timeout):
+        if not file_path.exists():
+            return []
+        with file_path.open("rb") as stream:
+            raw = stream.read(MAX_IMPORT_BYTES + 1)
+        if len(raw) > MAX_IMPORT_BYTES:
+            raise ValueError("Import exceeds byte limit")
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("Import root must be an object")
+        if type(data.get("version", 1)) is not int or data.get("version", 1) not in (
+            1,
+            SCHEMA_VERSION,
         ):
-            data = json.load(f)
-
-        # Legacy (v0.5.x) exports have no "version" field and count as v1.
-        version = data.get("version", 1)
-        if version not in (1, SCHEMA_VERSION):
-            raise ValueError(
-                f"Unsupported export schema version {version!r} in {file_path}; this "
-                f"server supports versions 1 and {SCHEMA_VERSION}. The file may have "
-                "been created by a newer release."
-            )
-
-        # A valid session/export file must carry a "thoughts" key. Without this
-        # check, importing an arbitrary JSON file would silently load an empty
-        # list and wipe the current session.
+            raise UnsupportedSchemaVersion("Unsupported export schema version")
+        if set(data) - {"version", "thoughts", "lastUpdated", "exportedAt", "metadata"}:
+            raise ValueError("Unknown export envelope fields")
+        if "metadata" in data and not isinstance(data["metadata"], dict):
+            raise ValueError("Export metadata must be an object")
         if "thoughts" not in data:
-            raise KeyError(
-                f"File {file_path} does not contain a 'thoughts' key and is not a "
-                "valid session file."
-            )
-
-        # Convert data to ThoughtData objects after file is closed
-        thoughts = [ThoughtData.from_dict(thought_dict) for thought_dict in data["thoughts"]]
-
-        logger.debug(f"Loaded {len(thoughts)} thoughts from {file_path}")
+            raise KeyError("Import requires thoughts")
+        records = data["thoughts"]
+        if not isinstance(records, list):
+            raise ValueError("thoughts must be a list")
+        if len(records) > MAX_IMPORT_RECORDS:
+            raise ValueError("Import exceeds record limit")
+        if any(not isinstance(record, dict) for record in records):
+            raise ValueError("Every thought must be an object")
+        thoughts = [ThoughtData.from_dict(record) for record in records]
+        validate_thoughts(thoughts)
         return thoughts
-
-    except (json.JSONDecodeError, KeyError, ValueError) as e:
-        # JSONDecodeError and pydantic.ValidationError are ValueError subclasses,
-        # so (KeyError, ValueError) covers malformed JSON, missing keys, unknown
-        # stages and failed model validation alike.
-        logger.error(f"Error loading from {file_path}: {e}")
-
-        if not backup_on_corruption:
-            # Import path: never touch the caller's file or our current state.
-            raise
-
-        # Recovery path (own session file only): back up the corrupt file and
-        # start from an empty session instead of crashing the server.
-        backup_file = file_path.with_suffix(f".bak.{datetime.now().strftime('%Y%m%d%H%M%S')}")
-        file_path.rename(backup_file)
-        logger.info(f"Created backup of corrupted file at {backup_file}")
-        return []

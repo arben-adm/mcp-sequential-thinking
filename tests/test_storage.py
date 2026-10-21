@@ -436,9 +436,8 @@ class TestThoughtStorage(unittest.TestCase):
     # ------------------------------------------------------------------
     # T3: server start recovers from semantically corrupt session file
     # ------------------------------------------------------------------
-    def test_init_with_invalid_stage_recovers(self):
-        """A session file with an invalid stage must not crash startup; it is
-        backed up and recovery starts from an empty session."""
+    def test_init_with_invalid_stage_preserves_original(self):
+        """Audit N4: refuse invalid legacy data without silently emptying it."""
         with tempfile.TemporaryDirectory() as d:
             session_file = Path(d) / "current_session.json"
             session_file.write_text(
@@ -446,11 +445,11 @@ class TestThoughtStorage(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            storage = ThoughtStorage(d)  # must not raise
-
-            self.assertEqual(storage.thought_history, [])
-            backups = list(Path(d).glob("current_session.bak.*"))
-            self.assertEqual(len(backups), 1)
+            before = session_file.read_bytes()
+            with self.assertRaises(ValueError):
+                ThoughtStorage(d)
+            self.assertEqual(session_file.read_bytes(), before)
+            self.assertFalse((Path(d) / "current_session.jsonl").exists())
 
     # ------------------------------------------------------------------
     # T4: export/import confined to storage_dir (CWE-22)
@@ -680,8 +679,8 @@ class TestThoughtStorage(unittest.TestCase):
         # No backup created; the file was recoverable.
         self.assertEqual(list(Path(self.temp_dir.name).glob("current_session.bak.*")), [])
 
-    def test_corrupt_middle_line_backs_up(self):
-        """A corrupt line in the middle invalidates the file: backup + empty session."""
+    def test_corrupt_middle_line_preserves_original(self):
+        """Audit N3: complete-record corruption stops with original intact."""
         for n in range(1, 3):
             self.storage.add_thought(self._make_thought(n))
 
@@ -690,10 +689,10 @@ class TestThoughtStorage(unittest.TestCase):
         lines[1] = "{not json"
         session_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        storage = ThoughtStorage(self.temp_dir.name)  # must not crash
-
-        self.assertEqual(storage.thought_history, [])
-        self.assertEqual(len(list(Path(self.temp_dir.name).glob("current_session.bak.*"))), 1)
+        before = session_file.read_bytes()
+        with self.assertRaises(ValueError):
+            ThoughtStorage(self.temp_dir.name)
+        self.assertEqual(session_file.read_bytes(), before)
 
     def test_jsonl_roundtrip_with_revision_and_branch_fields(self):
         """Revision/branch fields survive the JSONL roundtrip."""

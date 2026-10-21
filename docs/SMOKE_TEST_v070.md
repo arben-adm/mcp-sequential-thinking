@@ -137,7 +137,7 @@ the revision chain, alongside the structural statistics:
     "assumptions_challenged": ["Users expect to enter payment info upfront"],
     "open_branches": ["alt-form-theory"],
     "revision_chains": [{ "original_thought_number": 2, "replaced_by": [4] }],
-    "gaps": []
+    "stage_transitions": []
   },
   "structure": {
     "total_thoughts": 7,
@@ -145,24 +145,24 @@ the revision chain, alongside the structural statistics:
     "revision_count": 1,
     "top_tags": [{ "tag": "payment", "count": 2 }, "..."],
     "completion": {
-      "stages_covered": 5, "stages_total": 5,
-      "stage_coverage_percent": 100.0, "has_all_stages": true, "skipped_stages": []
+      "stages_used": 5, "stages_total": 5,
+      "stages_used_percent": 100.0, "uses_all_stages": true, "stages_not_used": []
     }
   }
 }
 ```
 
 `stages_total` is `5` (from `len(ThoughtStage)`, B2) and
-`stage_coverage_percent` is exactly `100.0` for 5/5 stages used — not the
+`stages_used_percent` is exactly `100.0` for 5/5 stages used — not the
 `66.67` (4/6) miscalculation the bug report described.
 
 ## Export → clear → import round trip
 
 ```
-export_session  -> {"status": "success", "message": "Session exported to smoke_export.json", "thought_count": 7, "file_path": "smoke_export.json"}
+export_session  -> {"status": "success", "message": "Session exported to smoke_export.json", "record_count": 7, "file_path": "smoke_export.json"}
 clear_history   -> {"status": "success", "message": "Thought history cleared", "cleared_count": 7}
 generate_summary -> {"has_thoughts": false, "message": "No thoughts recorded yet", "content": null, "structure": null}
-import_session  -> {"status": "success", "message": "Session imported from smoke_export.json", "thought_count": 7}
+import_session  -> {"status": "success", "message": "Session imported from smoke_export.json", "record_count": 7}
 generate_summary -> identical to the "generate_summary" block above (all 7 thoughts, all content and structure fields byte-identical) — the round trip is lossless.
 ```
 
@@ -174,7 +174,7 @@ generate_summary -> identical to the "generate_summary" block above (all 7 thoug
   auto-numbering worked correctly across the mainline and a branch. ✅
 - `generate_summary` carries real content (excerpts, assumptions,
   open branches, revision chains), not just counters. ✅
-- `stage_coverage_percent` denominator is `5`, matches `len(ThoughtStage)`. ✅
+- `stages_used_percent` denominator is `5`, matches `len(ThoughtStage)`. ✅
 - Export → clear → import round trip is lossless. ✅
 - Every call completed in well under 1ms (logged via `log_duration`,
   visible on stderr) — no call approached the 2s merge-gate ceiling. ✅

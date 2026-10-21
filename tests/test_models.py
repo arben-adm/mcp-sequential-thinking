@@ -6,20 +6,18 @@ from mcp_sequential_thinking.models import ThoughtData, ThoughtStage
 class TestThoughtStage(unittest.TestCase):
     """Test cases for the ThoughtStage enum."""
 
-    def test_from_string_valid(self):
+    def test_lookup_valid(self):
         """Test converting valid strings to ThoughtStage enum values."""
-        self.assertEqual(
-            ThoughtStage.from_string("Problem Definition"), ThoughtStage.PROBLEM_DEFINITION
-        )
-        self.assertEqual(ThoughtStage.from_string("Research"), ThoughtStage.RESEARCH)
-        self.assertEqual(ThoughtStage.from_string("Analysis"), ThoughtStage.ANALYSIS)
-        self.assertEqual(ThoughtStage.from_string("Synthesis"), ThoughtStage.SYNTHESIS)
-        self.assertEqual(ThoughtStage.from_string("Conclusion"), ThoughtStage.CONCLUSION)
+        self.assertEqual(ThoughtStage("Problem Definition"), ThoughtStage.PROBLEM_DEFINITION)
+        self.assertEqual(ThoughtStage("Research"), ThoughtStage.RESEARCH)
+        self.assertEqual(ThoughtStage("Analysis"), ThoughtStage.ANALYSIS)
+        self.assertEqual(ThoughtStage("Synthesis"), ThoughtStage.SYNTHESIS)
+        self.assertEqual(ThoughtStage("Conclusion"), ThoughtStage.CONCLUSION)
 
-    def test_from_string_invalid(self):
+    def test_lookup_invalid(self):
         """Test that invalid strings raise ValueError."""
         with self.assertRaises(ValueError):
-            ThoughtStage.from_string("Invalid Stage")
+            ThoughtStage("Invalid Stage")
 
 
 class TestThoughtData(unittest.TestCase):
