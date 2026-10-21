@@ -130,6 +130,8 @@ scheduled in this release.
 They do not separate parallel tasks or users. Create explicit sessions for new tasks.
 New `add_step`/`delete_session` calls refuse `legacy`; use its original write/clear
 tools. `read_session(session_id="legacy")` can read it.
+In that view a legacy branch `X` appears as `legacy-X`, and its positions keep
+their legacy numbering (a branch from thought 1 starts at 2).
 
 `process_thought` retains required `total_thoughts`, `next_thought_needed` and
 `stage`. `thought_number` is optional and allocated atomically. Stages are Problem

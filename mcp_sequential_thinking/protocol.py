@@ -66,7 +66,9 @@ class WorkingNotesServer(MCPServer[Any]):
                     {
                         str(part)
                         for issue in validation.errors(include_input=False)
-                        for part in issue["loc"]
+                        # Cross-field validators carry no loc; their author-written
+                        # messages name the fields involved (snake_case words).
+                        for part in issue["loc"] or re.findall(r"\b[a-z]+_[a-z_]+\b", issue["msg"])
                         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,40}", str(part))
                     }
                 )[:5]

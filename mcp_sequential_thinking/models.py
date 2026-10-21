@@ -106,7 +106,7 @@ class ThoughtData(BaseModel):
         if self.revises_thought_number is not None and not self.is_revision:
             raise ValueError("revises_thought_number requires is_revision=True")
         if self.is_revision and self.branch_from_thought is not None:
-            raise ValueError("A thought cannot be a revision and a branch start at the same time")
+            raise ValueError("is_revision and branch_from_thought cannot be set at the same time")
         if self.branch_id is not None and self.branch_from_thought is None:
             raise ValueError("branch_id requires branch_from_thought to be set")
 

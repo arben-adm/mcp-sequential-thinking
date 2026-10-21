@@ -218,6 +218,18 @@ async def test_schema_case_compatibility_error_redaction_and_summary_budget(tmp_
         assert secret not in bad.content[0].text
         assert str(tmp_path) not in bad.content[0].text
         assert len(bad.content[0].text) < 500
+        cross_field = await client.call_tool(
+            "process_thought",
+            {
+                "thought": "x",
+                "stage": "Analysis",
+                "total_thoughts": 100,
+                "next_thought_needed": False,
+                "branch_id": "b",
+            },
+        )
+        assert cross_field.is_error
+        assert "Fields: branch_from_thought, branch_id" in cross_field.content[0].text
         summary = await client.call_tool("generate_summary", {"max_chars": 1500})
         assert not summary.is_error
         assert summary.structured_content["truncated"]

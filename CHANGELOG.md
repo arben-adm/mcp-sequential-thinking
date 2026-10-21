@@ -12,6 +12,11 @@
   revision is no longer reported as skipped.
 - Add `deprecation_notice` to `generate_summary`, `clear_history` and legacy-session
   `export_session`/`import_session` results (null for explicit sessions).
+- Name the involved fields in `INVALID_INPUT` hints for cross-field validation
+  errors (e.g. `Fields: branch_from_thought, branch_id`).
+- Kept by decision: `truncated` stays one flag (`next_cursor` signals more pages),
+  cursors stay opaque per view, and a `create_session` retry returns the original
+  snapshot (use `read_session` for current state).
 
 ### Cleanup (2026-10-21)
 
