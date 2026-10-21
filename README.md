@@ -1,284 +1,148 @@
-# MCP Sequential Thinking — working notes you can resume
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/arben-adm-mcp-sequential-thinking-badge.png)](https://mseep.ai/app/arben-adm-mcp-sequential-thinking)
+[![Verified on MseeP](https://mseep.ai/badge.svg)](https://mseep.ai/app/0387db2d-476b-4b3d-852a-d55b4f67d888)
+
+# MCP Sequential Thinking
+
+[![MCP Toplist](https://mcptoplist.com/badge/glama%2Farben-adm%2Fmcp-sequential-thinking.svg)](https://mcptoplist.com/server/glama%2Farben-adm%2Fmcp-sequential-thinking)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 <!-- mcp-name: io.github.arben-adm/mcp-sequential-thinking -->
 
-A local MCP server for explicit working notes, evidence, decisions and next actions.
-Use it to keep track of a difficult task across interruptions. Simple questions do
-not need a session, a tool call, or five reasoning phases. The server neither asks
-for hidden internal chain-of-thought nor claims to improve general reasoning quality.
+A local MCP server for **working notes you can resume**: evidence, decisions, risks
+and next actions for a difficult task, stored durably in SQLite and readable after
+any restart. It records what the caller writes; it does not generate, judge or
+improve reasoning, and it never asks for hidden chain-of-thought.
 
-**Development candidate: 0.7.0.** GitHub and PyPI still publish **0.6.1** as checked
-on 2026-09-05. The session API described here is in the development branch, not in
-that published package. This upgrade is a development candidate and is not
-merge/release-ready.
+<a href="https://glama.ai/mcp/servers/m83dfy8feg"><img width="380" height="200" src="https://glama.ai/mcp/servers/m83dfy8feg/badge" alt="Sequential Thinking Server MCP server" /></a>
 
-## Try the restart demo
+> **Status:** 0.7.0 is on `master` but not yet released; PyPI still ships 0.6.1.
 
-Python 3.10+ is declared; the release gate runs complete tests on Python 3.10–3.14,
-Linux and Windows, against the minimum and latest compatible MCP SDK. Current
-results are recorded in the CI runs for this branch.
-
-From this branch, install it into a virtual environment:
+## Quick start
 
 ```sh
-python -m venv .venv
-# Linux/macOS: . .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
 python -m pip install -e .
-python scripts/stdio_smoke.py
+python scripts/stdio_smoke.py                  # restart demo: write, restart, read back
 ```
 
-Once dependencies are installed, the demo takes a few seconds. It starts a real
-stdio server, creates a session, stores an evidence note and a decision, stops the
-process, starts it again and reads the decision with the same step IDs. It also
-checks an invalid call and an idempotent retry. Its temporary demo data is removed
-at the end. See [the demo script](scripts/stdio_smoke.py) for the complete calls.
+Client configuration (Claude Desktop, Cursor, …):
 
-The essential calls in an MCP client are:
+```json
+{"mcpServers":{"working-notes":{
+  "command":"/absolute/path/to/.venv/bin/mcp-sequential-thinking",
+  "env":{"MCP_STORAGE_DIR":"/absolute/path/to/notes"}}}}
+```
+
+On Windows use `.venv\Scripts\mcp-sequential-thinking.exe`.
+
+A typical session:
 
 ```json
 {"tool":"create_session","arguments":{"title":"Choose a local store","request_id":"create-1"}}
-{"tool":"add_step","arguments":{"session_id":"<returned ID>","content":"Two writers must allocate unique positions.","kind":"evidence","request_id":"step-1"}}
-{"tool":"add_step","arguments":{"session_id":"<returned ID>","content":"Use SQLite; verify restore before release.","kind":"decision","request_id":"step-2"}}
-{"tool":"read_session","arguments":{"session_id":"<returned ID>"}}
+{"tool":"add_step","arguments":{"session_id":"<id>","content":"Two writers need unique positions.","kind":"evidence","request_id":"step-1"}}
+{"tool":"add_step","arguments":{"session_id":"<id>","content":"Use SQLite.","kind":"decision","request_id":"step-2"}}
+{"tool":"read_session","arguments":{"session_id":"<id>"}}
 ```
 
-These are example tool names/arguments, not raw JSON-RPC envelopes. After a process
-restart, `list_sessions` finds the task even if the client lost its ID.
-
-## Three useful workflows
-
-- **Debugging:** record a hypothesis and a test result. Use `supersedes_step_id`
-  when a result replaces an earlier claim. Resume omits superseded notes; full
-  history still contains them with their superseded status.
-- **Decisions:** record alternatives, evidence, risks and an explicit chosen option.
-  Finalization stores the caller's outcome and evidence IDs, with a version check.
-  It does not generate a conclusion or verify whether a URL proves a claim.
-- **Research/planning:** keep source URIs, open questions and next actions. Resume
-  shows active decisions/actions and recent notes; paginated reads recover details.
-
-These deterministic storage properties are distinct from a model usefulness
-comparison. **No completed model comparison or universal improvement in answer
-quality is claimed.**
+Lost the ID after a restart? `list_sessions` finds the session by title.
 
 ## Tools
 
 | Tool | Purpose |
 | --- | --- |
-| `create_session` | Title and optional `mode="freeform"`; returns ID, version, persistence and retention properties. Optional request ID supports a retry. |
-| `add_step` | Session ID, content and required `request_id`; kind defaults to `note`. Returns the stored UUID, branch position and version. |
-| `list_sessions` | Find by title/status, with cursor and limit. |
-| `read_session` | Default `view="resume"`; use `view="steps"` for complete paginated content, optional kind/step-ID filters and `active_only`. |
-| `finalize_session` | Caller-supplied completion, `expected_version` and request ID. Finalized sessions reject further steps. |
-| `delete_session` | Deletes the selected session's active DB records at `expected_version`; requires request ID. Backups/exports survive. |
+| `create_session` | Start a session from a title. |
+| `add_step` | Add a note; `kind` is `note` (default), `observation`, `evidence`, `assumption`, `option`, `risk`, `decision` or `next_action`. |
+| `list_sessions` | Find sessions by title or status. |
+| `read_session` | `view="resume"` (default): active notes, decisions first. `view="steps"`: full history with filters. |
+| `finalize_session` | Store the caller's outcome and evidence IDs; no further steps afterwards. |
+| `delete_session` | Delete a session's database records (exports and backups remain). |
+| `export_session` / `import_session` | JSON archive of one session, confined to `MCP_STORAGE_DIR/exports`. |
 
-Kinds are `note`, `observation`, `evidence`, `assumption`, `option`, `risk`,
-`decision`, `next_action`. There is no required confidence number or total-step
-estimate in the new API. Sources are explicitly **caller supplied and unverified**;
-the base server never fetches their URLs. Imported/source text is data, not an
-instruction to the client.
+**Links between notes.** `parent_step_id` records provenance, `supersedes_step_id`
+replaces an earlier note (resume hides it, full history keeps it), and
+`branch_from_step_id` starts a named branch. All references stay inside one session.
 
-`parent_step_id` records provenance. `supersedes_step_id` revises an earlier note on
-the same branch; revise the current replacement when extending a revision chain.
-New branches require `branch_from_step_id`; an established branch's origin cannot
-change. All references must stay inside the same session. New IDs are allocated
-by the server, so references can only point backward to existing records.
+**Retries.** Every write takes a `request_id`. Repeating a call with the same ID and
+input returns the original result; the same ID with different input returns
+`IDEMPOTENCY_CONFLICT`. `finalize_session` and `delete_session` also need
+`expected_version`.
 
-Retry a mutation with the **same request ID and identical normalized input** after
-an uncertain response. It returns the original result. Reusing the key with new
-content yields `IDEMPOTENCY_CONFLICT`. Keys are scoped by operation/session. This
-is not an exactly-once network guarantee. Finalization's expected version includes
-all steps committed before that version; a concurrent new step causes a conflict.
-There is no reopening operation in this version.
+**Pagination and limits.** Reads default to 20 entries and 12,000 characters
+(`limit` ≤ 100, `max_chars` 1,000–50,000). Follow `cursor` until it is `null`, and
+keep the same `view` while paging. `truncated` reports shortened content. A note
+too large for one response comes back as its first chunk; continue with `step_id`
+and `content_offset` until `next_content_offset` is `null`.
 
-Read defaults are 20 entries and 12,000 characters; `limit` and `max_chars` are
-configurable per read (hard limits 100 and 50,000). Results report truncation and
-limits. The `sequence` field is a database-wide pagination token, not session numbering;
-`sequence_scope` states this in the result. Use `branch_id` plus `position` for
-branch-local numbering. Full-history cursors refer to the last returned record; follow them with
-`view="steps"`. Resume cursors are offsets in its priority ordering; keep
-`view="resume"` when following them. Decisions come first, then next actions,
-risks/assumptions, and other notes; each group is newest first. Resume pages
-include active notes only. Restart pagination if the session changes between pages.
-A null cursor means there are no more notes, even if excerpts are truncated.
-Completion is included on the first page by default; `include_completion=true`
-requests it explicitly and `false` suppresses it. Resume excerpts are limited to 500 characters per note; use its ID
-for the full record. For large legacy notes, pass `step_id`, `content_offset=0`
-and optionally `content_chars` (default 4,000; maximum 10,000). Follow the returned
-`next_content_offset` until null; offsets count Unicode characters, not bytes.
-In the steps view, a first note too large for `max_chars` is returned as its first
-content chunk with `content_truncated=true` instead of failing; `RESPONSE_LIMIT`
-remains only when its metadata alone exceeds the budget.
-This preserves access to legacy content larger than one response. A large completion may require `max_chars=50000`. These are
-character limits on structured content, not measured token counts or complete
-JSON-RPC frame sizes. List responses and legacy summaries are also bounded.
+**Errors** set `isError=true` with a stable code and a short hint, e.g.
+`INVALID_INPUT` (with `Fields: …`), `UNKNOWN_SESSION`, `INVALID_REFERENCE`,
+`CONFLICT` (with `current_version`), `SESSION_FINALIZED`, `IDEMPOTENCY_CONFLICT`,
+`STORAGE_BUSY` (retry with the same `request_id`), `PATH_OUTSIDE_EXPORTS`,
+`RESPONSE_LIMIT`.
 
-Errors use `isError=true` on the wire (`is_error` in the Python SDK), stable codes
-such as `INVALID_INPUT`, `UNKNOWN_SESSION`, `INVALID_REFERENCE`, `CONFLICT`,
-`SESSION_FINALIZED`, `PATH_OUTSIDE_EXPORTS`, `IDEMPOTENCY_CONFLICT`, `STORAGE_BUSY`, and a bounded correction hint. Protocol
-errors remain distinct. Version conflicts include `current_version=<integer>`;
-review concurrent changes before retrying. `SESSION_FINALIZED` requires a new
-session, not a retry with a newer version. `PATH_OUTSIDE_EXPORTS` explicitly
-identifies an export/import path escaping the permitted directory, without
-returning filesystem paths. Completion evidence IDs must exist in the same
-session; missing or foreign IDs produce `INVALID_REFERENCE` without finalizing. Client annotations describe effects; they are not an
-access-control or confirmation mechanism.
+Sources attached to notes are caller-supplied and never fetched or verified.
 
-## Legacy compatibility (deprecated in 0.7.0)
+## Legacy tools (deprecated)
 
-`process_thought`, `generate_summary`, `clear_history`, `export_session` and
-`import_session` without an explicit session ID remain available on the reserved
-**local `legacy` session**. This compatibility path is deprecated; removal is not
-scheduled in this release.
-They do not separate parallel tasks or users. Create explicit sessions for new tasks.
-New `add_step`/`delete_session` calls refuse `legacy`; use its original write/clear
-tools. `read_session(session_id="legacy")` can read it.
-In that view a legacy branch `X` appears as `legacy-X`, and its positions keep
-their legacy numbering (a branch from thought 1 starts at 2).
+`process_thought`, `generate_summary` and `clear_history`, plus `export_session` /
+`import_session` without a `session_id`, work on a single shared `legacy` session.
+They remain for existing clients; every result carries a `deprecation_notice`.
+Use the session API for new work.
 
-`process_thought` retains required `total_thoughts`, `next_thought_needed` and
-`stage`. `thought_number` is optional and allocated atomically. Stages are Problem
-Definition, Research, Analysis, Synthesis, Conclusion; their existing
-case-insensitive spelling is accepted. Stage order is advisory unless
-`--strict-stages` is selected. Number-based revision targets resolve on the same
-line; forks resolve on the mainline, with an immutable origin. New UUID-based
-branch revisions belong to the new session API.
+- Stages: Problem Definition, Research, Analysis, Synthesis, Conclusion
+  (case-insensitive). Order warnings are advisory unless `--strict-stages` is set.
+- `main_line_progress` counts mainline notes only, against your `total_thoughts`;
+  it is not task completion.
+- Legacy import **replaces** the legacy history.
+- `read_session(session_id="legacy")` reads it; a legacy branch `X` appears as
+  `legacy-X` there.
 
-Results use the existing 0.7-development snake_case structured output:
-`current_thought`, `analysis`, `context`, `warnings`, plus an explicit
-`deprecation_notice` directing new work to the session API; `generate_summary`,
-`clear_history` and legacy-session export/import results carry the same notice.
-Stage order warnings compare with the previous mainline or revision note, so a
-stage reached in a revision does not count as skipped. `main_line_progress`
-counts only non-revision mainline notes against caller-supplied `total_thoughts`;
-`main_line_progress_basis` explains that this is not task completion. Three notes
-including one revision can therefore mean 66.7%, with `total_thoughts_recorded=3`.
-Related thoughts use a DE/EN stopword-filtered token-set Jaccard heuristic
-(threshold 0.2, at most three matches), with no stemming or semantic guarantee; `same_category_thoughts` groups by shared tags, not merely equal stage.
-`generate_summary` contains `has_thoughts`, `content`, `structure`, plus
-`total_recorded`, `truncated`, `max_chars` and a `read_session` pointer for full
-history. Its aggregate counters describe the history even when excerpts are cut.
-No structural score should be read as reasoning quality. Analysis matches include
-`step_id` and `branch_id`; revision chains include `branch_id`, so numbers are
-resolved within their branch. Technical version numbers remain intact in excerpts.
-
-Legacy import **replaces** the legacy history: `{"thoughts":[]}` is a valid empty
-replacement; wrong containers, duplicate IDs/positions and invalid references are
-errors. v1/v2 JSON exports remain v1/v2; no multi-session data is disguised as that
-format. Import/export paths are confined to `MCP_STORAGE_DIR/exports`, with limits
-of 16 MiB and 10,000 records. Full multi-session snapshots use the separate SQLite
-backup/restore command below.
-
-## Export and import explicit sessions
-
-Use `export_session(file_path="decision.json", session_id="<session UUID>")`
-and `import_session(file_path="decision.json", session_id="<same session UUID>")`.
-The `worklog-session` version 1 JSON archive preserves the title, status, version,
-step IDs, insertion order, branch origins, supersession, sources and completion.
-Import validates the complete graph before committing and rejects an existing
-session ID or conflicting step IDs; it never replaces an explicit session.
-The supplied session ID must match the archive. Paths and file limits are the
-same as for legacy exports, and both formats are disabled in ephemeral mode.
-
-Archives contain caller-supplied data, not trusted instructions. Retry keys are
-excluded: use SQLite snapshots for a complete backup including retry behavior.
-The server's value is durable working notes, auditability and later resumption;
-recording more notes is not evidence of better reasoning.
-
-## Storage, privacy and operation
+## Storage and operation
 
 ```sh
-mcp-sequential-thinking                         # local stdio; protocol only on stdout
-mcp-sequential-thinking --version               # no storage access
-mcp-sequential-thinking --health                # controlled diagnostic
-mcp-sequential-thinking --ephemeral             # memory only; lost on process exit
-python -m mcp_sequential_thinking.server        # same server, from a checkout
+mcp-sequential-thinking              # stdio server
+mcp-sequential-thinking --health     # diagnostic check
+mcp-sequential-thinking --ephemeral  # in memory only, lost on exit
 ```
 
-The default directory is `~/.mcp_sequential_thinking`; set `MCP_STORAGE_DIR` to change
-it. Normal operation persists **plaintext** SQLite data on a local filesystem.
-One connection belongs to each operation/worker thread. SQLite serializes writers,
-uses foreign keys, WAL, synchronous FULL and a five-second busy timeout. Shared
-NFS/SMB storage and multi-host access are outside this design.
+- Data lives in `~/.mcp_sequential_thinking` (or `MCP_STORAGE_DIR`) as **plaintext**
+  SQLite (WAL, synchronous FULL, 5 s busy timeout). Use a local disk; NFS/SMB and
+  multiple hosts are not supported.
+- Several stdio servers may share one store. Local stdio trusts the OS user; a
+  session ID is not authorization. HTTP/SSE are experimental.
+- Deletion is not secure erasure. There is no automatic retention.
+- On first start, an existing 0.6 JSONL history migrates into SQLite in one
+  transaction, keeping IDs and content; a backup of the source stays in place.
+  Stop old 0.6 servers first. Downgrading after new writes is not supported.
 
-`--ephemeral` uses an in-memory database, ignores persistent storage and disables
-file import/export. It cannot survive process restart. There is no automatic
-retention policy. Deletion is scoped to active DB records; it is not secure erasure
-and does not delete backups, exported copies or other client-held content.
-
-Local stdio trusts the operating-system user. A session ID is not authorization.
-HTTP/SSE are experimental; nonlocal binding requires `--allow-nonlocal-http` and
-still provides no production multi-user authentication/isolation guarantee.
-Optional remote package F is not implemented.
-
-## Migration and restore
-
-Stop old server binaries before upgrade. Controlled startup validates/recoveries
-legacy JSONL tails, then migrates the entire history in one SQLite transaction.
-Existing UUIDs, content and timestamp strings are preserved; naive old timestamps
-retain an unknown timezone. Missing old IDs are assigned once. Conflicts stop
-startup; no silent deduplication or renumbering occurs. Unknown future schemas and
-complete/middle corruption preserve original files and fail closed.
-
-A checksum-named source backup and number-to-UUID mapping remain available. New
-servers hold the old file lock for their lifetime to stop exclusive old writers;
-multiple new stdio servers can operate on the SQLite store.
-
-Create a consistent snapshot, including all sessions and retry records:
+Backup and restore (all sessions, including retry keys):
 
 ```sh
-python -m mcp_sequential_thinking.backup create /path/to/storage /path/to/snapshot.sqlite3
+python -m mcp_sequential_thinking.backup create  /path/to/storage /path/to/snapshot.sqlite3
 python -m mcp_sequential_thinking.backup restore /path/to/NEW-storage /path/to/snapshot.sqlite3
 ```
 
-Snapshot creation uses SQLite's backup API and validates integrity, references and
-schema. It refuses an existing destination. Restore requires a new directory;
-then point `MCP_STORAGE_DIR` there and run `--health`. Keep the prior store until you
-have verified the restored tasks. Never copy only a live main SQLite file while
-ignoring its WAL. **An old JSONL backup is not a lossless downgrade after new SQLite
-writes.** Legacy export preserves only `legacy`; older releases cannot represent
-all new session/typed-record semantics. No automatic downgrade is offered.
+Restore requires a new directory. Never copy a live database file without its WAL.
 
-Atomic replacement and fsync do not prove survival of every device, filesystem or
-power failure. An interrupted response can follow a commit; retry IDs and verified
-snapshots address those explicit failure classes, not universal durability.
+## Tested with
 
-## Client configuration and test status
+| Client | OS | Date |
+| --- | --- | --- |
+| Python MCP SDK 2.0.0 and latest, Python 3.10–3.14 | Linux, Windows | every CI run |
+| Claude Desktop | Linux | 2026-10-21 |
 
-An MCP host can run the installed executable directly:
-
-```json
-{"mcpServers":{"working-notes":{"command":"/absolute/path/to/venv/bin/mcp-sequential-thinking","env":{"MCP_STORAGE_DIR":"/absolute/path/to/local-notes"}}}}
-```
-
-On Windows use the virtual environment's `Scripts/mcp-sequential-thinking.exe`.
-This is a conventional host configuration example, not a claim that every host
-has been tested.
-
-| Client/SDK | OS | Transport | Date | Evidence |
-| --- | --- | --- | --- | --- |
-| Python MCP Client 2.1.1, Python 3.12.13 | Linux | stdio | 2026-09-05 | Discovery/write/read/error/restart, isolated wheel smoke |
-| Python MCP SDK 2.0.0 and latest, Python 3.10–3.14 | Linux/Windows | stdio/in-memory | 2026-09-06 | 20 combinations passed at `af1c7c5`, [CI run](https://github.com/arben-adm/mcp-sequential-thinking/actions/runs/34004038086); later changes require fresh checks |
-| Claude Desktop, Cursor, VS Code, other hosts | untested | stdio | — | Configuration examples only |
-
-## Development and release
+## Development
 
 ```sh
-python -m pip install -e '.[dev]' build twine
-ruff check .
-ruff format --check .
-mypy --strict mcp_sequential_thinking
-pytest --cov=mcp_sequential_thinking --cov-fail-under=85
-python scripts/check_artifacts.py               # starts with an empty dist/
+uv run --extra dev ruff check .
+uv run --extra dev ruff format --check .
+uv run --extra dev mypy --strict mcp_sequential_thinking
+uv run --extra dev pytest --cov=mcp_sequential_thinking --cov-fail-under=85
+rm -rf dist && uv run --extra dev --with build --with twine --with jsonschema python scripts/check_artifacts.py
 ```
 
-The artifact check builds wheel/sdist, checks metadata, installs the wheel in a
-separate environment, starts it outside this checkout, runs a real restart/retry
-roundtrip, and independently rebuilds the sdist. CI publishes no package. The
-release workflow runs the same full gates and publishes precisely their tested
-artifact using Trusted Publishing **only after an operator publishes a release**.
-Version authority is `mcp_sequential_thinking/_version.py`; release tags must match.
-
-The registry metadata is prepared but not published. The PyPI README marker must
-be present in the published package before registry registration. Repository
-protection and required checks are an explicit operator task.
+The artifact check builds and installs the wheel in isolation and runs a real
+restart round trip. Releases publish that tested artifact via Trusted Publishing
+once a GitHub release is created; the version lives in
+`mcp_sequential_thinking/_version.py`. See [CHANGELOG.md](CHANGELOG.md) for details.
