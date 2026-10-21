@@ -14,6 +14,9 @@
   `export_session`/`import_session` results (null for explicit sessions).
 - Name the involved fields in `INVALID_INPUT` hints for cross-field validation
   errors (e.g. `Fields: branch_from_thought, branch_id`).
+- `read_session` steps view: a first note larger than `max_chars` degrades to its
+  first content chunk (`content_truncated`, `next_content_offset`) instead of
+  returning `RESPONSE_LIMIT`.
 - Kept by decision: `truncated` stays one flag (`next_cursor` signals more pages),
   cursors stay opaque per view, and a `create_session` retry returns the original
   snapshot (use `read_session` for current state).

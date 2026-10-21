@@ -499,8 +499,14 @@ def test_large_legacy_note_is_fully_readable_in_bounded_chunks(tmp_path):
             next_thought_needed=False,
             stage=ThoughtStage.ANALYSIS,
         )
-        with pytest.raises(SessionError, match="RESPONSE_LIMIT"):
-            repository.read_session("legacy", step_id=str(step.id), max_chars=50000)
+        # Without content_offset an oversized step degrades to its first chunk.
+        for budget in (1000, 50000):
+            page = repository.read_session("legacy", max_chars=budget)
+            assert len(json.dumps(page, ensure_ascii=False)) <= budget
+            first = page["steps"][0]
+            assert first["content_truncated"] and page["truncated"]
+            assert original.startswith(first["content"])
+            assert first["next_content_offset"] == len(first["content"]) > 0
         offset, pieces = 0, []
         while offset is not None:
             page = repository.read_session(

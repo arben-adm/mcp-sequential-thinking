@@ -106,6 +106,9 @@ requests it explicitly and `false` suppresses it. Resume excerpts are limited to
 for the full record. For large legacy notes, pass `step_id`, `content_offset=0`
 and optionally `content_chars` (default 4,000; maximum 10,000). Follow the returned
 `next_content_offset` until null; offsets count Unicode characters, not bytes.
+In the steps view, a first note too large for `max_chars` is returned as its first
+content chunk with `content_truncated=true` instead of failing; `RESPONSE_LIMIT`
+remains only when its metadata alone exceeds the budget.
 This preserves access to legacy content larger than one response. A large completion may require `max_chars=50000`. These are
 character limits on structured content, not measured token counts or complete
 JSON-RPC frame sizes. List responses and legacy summaries are also bounded.

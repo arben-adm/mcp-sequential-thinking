@@ -621,6 +621,24 @@ class SessionRepository:
                     result["truncated"] = result["truncated"] or item["content_truncated"]
                 result["steps"].append(item)
                 result["cursor"] = row["sequence"]
+                size = len(json.dumps(result, ensure_ascii=False))
+                if len(result["steps"]) == 1 and content_offset is None and size > max_chars - 100:
+                    # A lone oversized step degrades to a first content chunk instead of
+                    # failing; the caller continues with content_offset. If even empty
+                    # content cannot fit, the pop below reports RESPONSE_LIMIT.
+                    full = item["content"]
+                    keep = len(full)
+                    while keep > 0 and size > max_chars - 100:
+                        keep = max(0, keep - (size - (max_chars - 100)))
+                        item.update(
+                            content=full[:keep],
+                            content_offset=0,
+                            content_total_chars=len(full),
+                            next_content_offset=keep,
+                            content_truncated=True,
+                        )
+                        size = len(json.dumps(result, ensure_ascii=False))
+                    result["truncated"] = True
                 if len(json.dumps(result, ensure_ascii=False)) > max_chars - 100:
                     result["steps"].pop()
                     result["cursor"] = (
