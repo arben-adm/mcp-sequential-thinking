@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.7.0] — Unreleased development candidate
+## [0.7.0] - 2026-10-21
 
 ### Claude Desktop test follow-up (2026-10-21)
 
