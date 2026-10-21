@@ -6,7 +6,15 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
+from pydantic.alias_generators import to_camel
 
 # branch_id ends up in files and tool output, so it is restricted to a short,
 # filesystem- and log-safe alphabet.
@@ -31,31 +39,14 @@ class ThoughtStage(str, Enum):
             )
         return None
 
-    @classmethod
-    def from_string(cls, value: str) -> ThoughtStage:
-        """Convert a string to a thinking stage.
-
-        Args:
-            value: The string representation of the thinking stage
-
-        Returns:
-            ThoughtStage: The corresponding ThoughtStage enum value
-
-        Raises:
-            ValueError: If the string does not match any valid thinking stage
-        """
-        # Case-insensitive comparison
-        for stage in cls:
-            if stage.value.casefold() == value.casefold():
-                return stage
-
-        # If no match found
-        valid_stages = ", ".join(stage.value for stage in cls)
-        raise ValueError(f"Invalid thinking stage: '{value}'. Valid stages are: {valid_stages}")
-
 
 class ThoughtData(BaseModel):
     """Data structure for a single thought in the sequential thinking process."""
+
+    # Serialized records use camelCase keys; Python callers use field names.
+    model_config = ConfigDict(
+        alias_generator=to_camel, validate_by_name=True, validate_by_alias=True, extra="forbid"
+    )
 
     thought: str = Field(max_length=100000)
     thought_number: int
@@ -65,11 +56,11 @@ class ThoughtData(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=100)
     axioms_used: list[str] = Field(default_factory=list, max_length=100)
     assumptions_challenged: list[str] = Field(default_factory=list, max_length=100)
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     is_revision: bool = False
     revises_thought_number: int | None = None
     branch_from_thought: int | None = None
     branch_id: str | None = None
-    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     id: UUID = Field(default_factory=uuid4)
 
     def __hash__(self) -> int:
@@ -140,121 +131,28 @@ class ThoughtData(BaseModel):
         return self
 
     def to_dict(self, include_id: bool = False) -> dict[str, Any]:
-        """Convert the thought data to a dictionary representation.
+        """Serialize with camelCase keys; ``id`` only when ``include_id``.
 
-        Args:
-            include_id: Whether to include the ID in the dictionary representation.
-                        Default is False to omit it from external representations.
-
-        Returns:
-            dict: Dictionary representation of the thought data, with camelCase
-                keys for API consistency.
+        Revision/branch fields are only emitted when set, keeping records
+        compact and older v2 files readable without them.
         """
-        result = {
-            "thought": self.thought,
-            "thoughtNumber": self.thought_number,
-            "totalThoughts": self.total_thoughts,
-            "nextThoughtNeeded": self.next_thought_needed,
-            "stage": self.stage.value,
-            "tags": self.tags,
-            "axiomsUsed": self.axioms_used,
-            "assumptionsChallenged": self.assumptions_challenged,
-            "timestamp": self.timestamp,
-        }
-
-        # Revision/branch fields are only emitted when set, keeping records
-        # compact and older v2 files readable without them.
-        if self.is_revision:
-            result["isRevision"] = self.is_revision
-        if self.revises_thought_number is not None:
-            result["revisesThoughtNumber"] = self.revises_thought_number
-        if self.branch_from_thought is not None:
-            result["branchFromThought"] = self.branch_from_thought
-        if self.branch_id is not None:
-            result["branchId"] = self.branch_id
-
-        if include_id:
-            result["id"] = str(self.id)
-
+        result = self.model_dump(
+            mode="json", by_alias=True, exclude_none=True, exclude=None if include_id else {"id"}
+        )
+        if not self.is_revision:
+            del result["isRevision"]
         return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ThoughtData:
-        """Create a ThoughtData instance from a dictionary.
-
-        Args:
-            data: Dictionary containing thought data
-
-        Returns:
-            ThoughtData: A new ThoughtData instance
-        """
+        """Validate a serialized (camelCase) record; unknown keys are rejected."""
         if not isinstance(data, dict):
             raise ValueError("Thought record must be an object")
-        allowed = {
-            "thought",
-            "thoughtNumber",
-            "totalThoughts",
-            "nextThoughtNeeded",
-            "stage",
-            "tags",
-            "axiomsUsed",
-            "assumptionsChallenged",
-            "timestamp",
-            "id",
-            "isRevision",
-            "revisesThoughtNumber",
-            "branchFromThought",
-            "branchId",
-            "type",
-        }
-        if set(data) - allowed:
-            raise ValueError("Unknown thought record fields; use a compatible format")
-        if not isinstance(data.get("stage"), str):
-            raise ValueError("Stage must be a string")
         for field in ("tags", "axiomsUsed", "assumptionsChallenged"):
             value = data.get(field, [])
             if not isinstance(value, list) or any(
                 not isinstance(v, str) or len(v) > 1000 for v in value
             ):
                 raise ValueError("List fields require strings of at most 1000 characters")
-        # Convert any camelCase keys to snake_case
-        snake_data = {}
-        mappings = {
-            "thoughtNumber": "thought_number",
-            "totalThoughts": "total_thoughts",
-            "nextThoughtNeeded": "next_thought_needed",
-            "axiomsUsed": "axioms_used",
-            "assumptionsChallenged": "assumptions_challenged",
-            "isRevision": "is_revision",
-            "revisesThoughtNumber": "revises_thought_number",
-            "branchFromThought": "branch_from_thought",
-            "branchId": "branch_id",
-        }
-
-        # Process known direct mappings
-        for camel_key, snake_key in mappings.items():
-            if camel_key in data:
-                snake_data[snake_key] = data[camel_key]
-
-        # Copy fields that don't need conversion
-        for key in ["thought", "tags", "timestamp"]:
-            if key in data:
-                snake_data[key] = data[key]
-
-        # Handle special fields
-        if "stage" in data:
-            snake_data["stage"] = ThoughtStage.from_string(data["stage"])
-
-        # Set default values for missing fields
-        snake_data.setdefault("tags", [])
-        snake_data.setdefault("axioms_used", data.get("axiomsUsed", []))
-        snake_data.setdefault("assumptions_challenged", data.get("assumptionsChallenged", []))
-        snake_data.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
-
-        # Add ID if present, otherwise generate a new one
-        if "id" in data:
-            snake_data["id"] = data["id"]
-
-        return cls(**snake_data)
-
-    model_config = {"arbitrary_types_allowed": True}
+        record = {key: value for key, value in data.items() if key != "type"}
+        return cls.model_validate(record, by_alias=True, by_name=False)

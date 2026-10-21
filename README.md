@@ -184,6 +184,7 @@ mcp-sequential-thinking                         # local stdio; protocol only on 
 mcp-sequential-thinking --version               # no storage access
 mcp-sequential-thinking --health                # controlled diagnostic
 mcp-sequential-thinking --ephemeral             # memory only; lost on process exit
+python -m mcp_sequential_thinking.server        # same server, from a checkout
 ```
 
 The default directory is `~/.mcp_sequential_thinking`; set `MCP_STORAGE_DIR` to change

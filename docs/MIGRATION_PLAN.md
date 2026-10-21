@@ -56,7 +56,7 @@ mcp_sequential_thinking/
   analysis.py       - ThoughtAnalyzer: find_related_thoughts, generate_summary,
                        analyze_thought
   logging_conf.py   - stderr logger factory
-  utils.py          - to_camel_case (unused outside tests currently)
+  utils.py          - to_camel_case (unused outside tests currently; removed in 0.7.0)
 tests/
   test_models.py    - 17 tests, ThoughtData validation incl. revision/branch
   test_storage.py   - 24 tests, JSONL schema, locking, path traversal,
@@ -79,7 +79,8 @@ anfassen" list, all currently covered by `test_storage.py` /
 `test_models.py`):
 
 1. Stage validation with enumeration of valid values —
-   `ThoughtStage.from_string` (`test_from_string_invalid`).
+   `ThoughtStage.from_string` (`test_from_string_invalid`; since 0.7.0
+   `ThoughtStage(value)`, `test_lookup_invalid`).
 2. `branch_id` without `branch_from_thought` rejected —
    `test_branch_id_requires_branch_from`.
 3. `thought_number > total_thoughts` rejected —

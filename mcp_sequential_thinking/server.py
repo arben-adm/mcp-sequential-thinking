@@ -16,41 +16,23 @@ from mcp.types import ToolAnnotations
 from portalocker.exceptions import BaseLockException
 from pydantic import Field, ValidationError
 
-# Use absolute imports when running as a script
-try:
-    # When installed as a package
-    from .analysis import ThoughtAnalyzer
-    from .logging_conf import configure_logging, log_duration
-    from .models import ThoughtStage
-    from .schemas import (
-        ClearHistoryResult,
-        ExportResult,
-        ImportResult,
-        ProcessThoughtResult,
-        SummaryResult,
-    )
-    from .storage import ThoughtStorage
-except ImportError:
-    # When run directly
-    from mcp_sequential_thinking.analysis import ThoughtAnalyzer
-    from mcp_sequential_thinking.logging_conf import configure_logging, log_duration
-    from mcp_sequential_thinking.models import ThoughtStage
-    from mcp_sequential_thinking.schemas import (
-        ClearHistoryResult,
-        ExportResult,
-        ImportResult,
-        ProcessThoughtResult,
-        SummaryResult,
-    )
-    from mcp_sequential_thinking.storage import ThoughtStorage
-
 from . import session_archive
 from ._version import __version__
+from .analysis import ThoughtAnalyzer
 from .legacy import LegacyAdapter
+from .logging_conf import configure_logging, log_duration
+from .models import ThoughtStage
 from .protocol import WorkingNotesServer
+from .schemas import (
+    ClearHistoryResult,
+    ExportResult,
+    ImportResult,
+    ProcessThoughtResult,
+    SummaryResult,
+)
 from .session_tools import register_session_tools
 from .sessions import SessionError, SessionRepository
-from .storage import DuplicateThoughtNumberError, PathOutsideExportsError
+from .storage import DuplicateThoughtNumberError, PathOutsideExportsError, ThoughtStorage
 
 logger = configure_logging("sequential-thinking.server")
 
@@ -75,7 +57,6 @@ sessions: SessionRepository | None = None
 
 
 def _get_storage() -> ThoughtStorage | LegacyAdapter:
-    global storage
     if storage is None:
         raise ToolError("STORAGE_UNAVAILABLE: initialize the server before calling tools")
     return storage
@@ -538,19 +519,6 @@ def main() -> None:
 
     logger.info("Starting Sequential Thinking MCP server")
 
-    # Ensure UTF-8 encoding for stdin/stdout
-    if hasattr(sys.stdout, "buffer") and sys.stdout.encoding != "utf-8":
-        import io
-
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", line_buffering=True)
-    if hasattr(sys.stdin, "buffer") and sys.stdin.encoding != "utf-8":
-        import io
-
-        sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8", line_buffering=True)
-
-    # Flush stdout to ensure no buffered content remains
-    sys.stdout.flush()
-
     try:
         if args.transport == "stdio":
             mcp.run(transport="stdio")
@@ -564,14 +532,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # When running the script directly, ensure we're in the right directory.
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if parent_dir not in sys.path:
-        sys.path.insert(0, parent_dir)
-
-    logger.info(f"Python version: {sys.version}")
-    logger.info(f"Current working directory: {os.getcwd()}")
-    logger.info(f"Script directory: {os.path.dirname(os.path.abspath(__file__))}")
-    logger.info(f"Parent directory added to path: {parent_dir}")
-
     main()

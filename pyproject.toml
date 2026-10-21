@@ -30,19 +30,6 @@ dev = [
     "mypy>=1.13.0",
 ]
 
-vis = [
-    "matplotlib>=3.5.0",
-    "numpy>=1.20.0",
-]
-
-web = [
-    "fastapi>=0.100.0",
-    "uvicorn>=0.20.0",
-]
-
-all = [
-    "mcp-sequential-thinking[dev,vis,web]",
-]
 
 [project.urls]
 Source = "https://github.com/arben-adm/mcp-sequential-thinking"

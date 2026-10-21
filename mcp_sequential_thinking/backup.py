@@ -34,12 +34,6 @@ def validate_snapshot(connection: sqlite3.Connection) -> None:
         raise SessionError(
             "UNSUPPORTED_SCHEMA", "Snapshot schema differs from the supported schema"
         )
-    required = {"sessions", "branches", "steps", "requests", "migrations"}
-    actual = {
-        row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    }
-    if actual != required:
-        raise SessionError("UNSUPPORTED_SCHEMA", "Unexpected snapshot tables")
     # New IDs can only refer to existing earlier rows. This catches edits that
     # introduce cycles even when SQLite's existence constraints still hold.
     if connection.execute(

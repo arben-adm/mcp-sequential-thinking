@@ -2,6 +2,20 @@
 
 ## [0.7.0] — Unreleased development candidate
 
+### Cleanup (2026-10-21)
+
+- Remove `run_server.py`; use `mcp-sequential-thinking` or
+  `python -m mcp_sequential_thinking.server`.
+- Remove `debug_mcp_connection.py`; `scripts/stdio_smoke.py` covers the stdio check
+  with the real MCP client.
+- Remove the unused `utils.to_camel_case` and `ThoughtStage.from_string`;
+  `ThoughtStage(value)` accepts the same case-insensitive spelling.
+- Drop the unused `vis`, `web` and `all` extras (matplotlib, numpy, fastapi, uvicorn).
+- `ThoughtData` serializes through Pydantic camelCase aliases; the stored format and
+  key order are unchanged, unknown keyword arguments are now rejected.
+- Rely on the MCP SDK's UTF-8 stdio wrapping; drop the duplicate re-wrap and the
+  script-mode import fallback in `server.py`.
+
 ### Second manual MCP audit follow-up (2026-09-08)
 
 - Return `PATH_OUTSIDE_EXPORTS` for rejected import/export paths with a useful,
