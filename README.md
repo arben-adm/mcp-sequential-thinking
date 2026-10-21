@@ -17,8 +17,6 @@ improve reasoning, and it never asks for hidden chain-of-thought.
 
 <a href="https://glama.ai/mcp/servers/m83dfy8feg"><img width="380" height="200" src="https://glama.ai/mcp/servers/m83dfy8feg/badge" alt="Sequential Thinking Server MCP server" /></a>
 
-> **Status:** 0.7.0 is on `master` but not yet released; PyPI still ships 0.6.1.
-
 ## Quick start
 
 ```sh
