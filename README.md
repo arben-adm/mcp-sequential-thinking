@@ -17,7 +17,54 @@ improve reasoning, and it never asks for hidden chain-of-thought.
 
 <a href="https://glama.ai/mcp/servers/m83dfy8feg"><img width="380" height="200" src="https://glama.ai/mcp/servers/m83dfy8feg/badge" alt="Sequential Thinking Server MCP server" /></a>
 
-## Quick start
+## Installation
+
+Published on [PyPI](https://pypi.org/project/mcp-sequential-thinking/) and in the
+[MCP Registry](https://registry.modelcontextprotocol.io/) as
+`io.github.arben-adm/mcp-sequential-thinking`. With [uv](https://docs.astral.sh/uv/)
+installed, `uvx mcp-sequential-thinking` runs it without a manual install
+(pin with `uvx mcp-sequential-thinking@0.7.0`). `MCP_STORAGE_DIR` is optional.
+
+**Claude Code**
+
+```sh
+claude mcp add working-notes -- uvx mcp-sequential-thinking                   # this project only
+claude mcp add --scope user working-notes -- uvx mcp-sequential-thinking      # all projects
+claude mcp add --scope project working-notes -- uvx mcp-sequential-thinking   # shared via .mcp.json
+```
+
+**Gemini CLI**
+
+```sh
+gemini mcp add working-notes uvx mcp-sequential-thinking   # writes .gemini/settings.json
+```
+
+**Codex CLI**
+
+```sh
+codex mcp add working-notes -- uvx mcp-sequential-thinking
+```
+
+**Claude Desktop** (Settings → Developer → Edit Config, `claude_desktop_config.json`)
+
+```json
+{"mcpServers":{"working-notes":{
+  "command":"uvx",
+  "args":["mcp-sequential-thinking"],
+  "env":{"MCP_STORAGE_DIR":"/absolute/path/to/notes"}}}}
+```
+
+Restart Claude Desktop afterwards.
+
+**VS Code** (`.vscode/mcp.json`)
+
+```json
+{"servers":{"working-notes":{"type":"stdio","command":"uvx","args":["mcp-sequential-thinking"]}}}
+```
+
+If a GUI client cannot find `uvx`, use its absolute path (`which uvx`).
+
+### From source
 
 ```sh
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
@@ -25,15 +72,10 @@ python -m pip install -e .
 python scripts/stdio_smoke.py                  # restart demo: write, restart, read back
 ```
 
-Client configuration (Claude Desktop, Cursor, …):
+Then point the client at `/absolute/path/to/.venv/bin/mcp-sequential-thinking`
+(Windows: `.venv\Scripts\mcp-sequential-thinking.exe`) instead of `uvx`.
 
-```json
-{"mcpServers":{"working-notes":{
-  "command":"/absolute/path/to/.venv/bin/mcp-sequential-thinking",
-  "env":{"MCP_STORAGE_DIR":"/absolute/path/to/notes"}}}}
-```
-
-On Windows use `.venv\Scripts\mcp-sequential-thinking.exe`.
+## Quick start
 
 A typical session:
 
