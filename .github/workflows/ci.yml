@@ -45,7 +45,7 @@ jobs:
       - run: pip install build twine jsonschema
       - run: python scripts/check_metadata.py
       - run: python scripts/check_artifacts.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 verified 2026-09-05
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4 verified 2026-09-05
         with:
           name: tested-dist-${{ github.sha }}
           path: dist/*
