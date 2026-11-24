@@ -315,7 +315,11 @@ def load_thoughts_from_file(
         if not file_path.exists():
             return []
         with file_path.open("rb") as stream:
-            raw = stream.read(MAX_IMPORT_BYTES + 1)
+            read_limit = min(os.fstat(stream.fileno()).st_size + 1, MAX_IMPORT_BYTES + 1)
+            raw = stream.read(read_limit)
+            if len(raw) == read_limit and read_limit <= MAX_IMPORT_BYTES:
+                # The file may have grown since fstat; retain the bounded read.
+                raw += stream.read(MAX_IMPORT_BYTES + 1 - len(raw))
         if len(raw) > MAX_IMPORT_BYTES:
             raise ValueError("Import exceeds byte limit")
         data = json.loads(raw)
